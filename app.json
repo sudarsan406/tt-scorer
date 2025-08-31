@@ -14,7 +14,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ttscoreapp.ttscore"
+      "bundleIdentifier": "com.skanagala.ttscore"
     },
     "android": {
       "adaptiveIcon": {
@@ -22,7 +22,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.ttscoreapp.ttscore"
+      "package": "com.skanagala.ttscore"
     },
     "web": {
       "favicon": "./assets/favicon.png"

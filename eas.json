@@ -12,11 +12,11 @@
     },
     "production": {
       "ios": {
-        "bundleIdentifier": "com.ttscoreapp.ttscore"
+        "bundleIdentifier": "com.skanagala.ttscore"
       },
       "android": {
         "buildType": "apk",
-        "applicationId": "com.ttscoreapp.ttscore"
+        "applicationId": "com.skanagala.ttscore"
       }
     }
   },
