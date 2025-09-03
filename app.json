@@ -29,8 +29,9 @@
     },
     "extra": {
       "eas": {
-        "projectId": "placeholder-update-when-configuring-eas"
+        "projectId": "947271cb-e980-4b29-aa17-8af244656acd"
       }
-    }
+    },
+    "owner": "sudarsan406"
   }
 }

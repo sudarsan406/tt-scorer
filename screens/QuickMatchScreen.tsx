@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player } from '../types/models';
-import { databaseService } from '../services/database';
 
 interface QuickMatchScreenProps {
   navigation: any;
@@ -33,6 +32,7 @@ export default function QuickMatchScreen({ navigation }: QuickMatchScreenProps) 
 
   const loadPlayers = async () => {
     try {
+      const { databaseService } = await import('../services/database');
       const playersData = await databaseService.getPlayers();
       setPlayers(playersData);
     } catch (error) {
@@ -81,13 +81,10 @@ export default function QuickMatchScreen({ navigation }: QuickMatchScreenProps) 
 
     setCreating(true);
     try {
-      if (isDoubles) {
-      } else {
-      }
-      
       const team1Name = isDoubles ? `${selectedPlayer1!.name}/${selectedPlayer2!.name}` : selectedPlayer1!.name;
       const team2Name = isDoubles ? `${selectedPlayer3!.name}/${selectedPlayer4!.name}` : selectedPlayer2!.name;
       
+      const { databaseService } = await import('../services/database');
       const matchId = await databaseService.createMatch({
         player1Id: selectedPlayer1!.id,
         player2Id: selectedPlayer2!.id,

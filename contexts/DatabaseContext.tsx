@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { Platform } from 'react-native';
 
 interface DatabaseContextType {
   isReady: boolean;
@@ -19,12 +18,6 @@ export const DatabaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   useEffect(() => {
     const initDatabase = async () => {
-      if (Platform.OS === 'web') {
-        // Skip database initialization on web
-        setIsReady(true);
-        return;
-      }
-      
       try {
         const { databaseService } = await import('../services/database');
         await databaseService.init();

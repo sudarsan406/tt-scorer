@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player } from '../types/models';
-import { databaseService } from '../services/database';
 
 export default function PlayersScreen({ navigation }: { navigation: any }) {
   const [players, setPlayers] = useState<Player[]>([]);
@@ -33,6 +32,7 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
 
   const loadPlayers = async () => {
     try {
+      const { databaseService } = await import('../services/database');
       const playersData = await databaseService.getPlayers();
       setPlayers(playersData);
     } catch (error) {
@@ -50,16 +50,17 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
     }
 
     try {
-      const newPlayer = await databaseService.createPlayer({
+      const { databaseService } = await import('../services/database');
+      await databaseService.createPlayer({
         name: newPlayerName.trim(),
         email: newPlayerEmail.trim() || undefined,
         rating: 1200,
       });
+      loadPlayers();
       
       setNewPlayerName('');
       setNewPlayerEmail('');
       setModalVisible(false);
-      loadPlayers();
     } catch (error) {
       console.error('Failed to add player:', error);
       Alert.alert('Error', 'Failed to add player');
