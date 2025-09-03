@@ -251,6 +251,46 @@ class DatabaseService {
     return result.map(this.mapRowToPlayer);
   }
 
+  async updatePlayer(id: string, updates: Partial<Omit<Player, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Player> {
+    if (!this.db) throw new Error('Database not initialized');
+    const now = new Date().toISOString();
+    
+    const setClause = Object.keys(updates)
+      .map(key => `${key} = ?`)
+      .join(', ');
+    
+    const values = [...Object.values(updates), now, id];
+    
+    await this.db.runAsync(
+      `UPDATE players SET ${setClause}, updated_at = ? WHERE id = ?`,
+      values
+    );
+    
+    const result = await this.db.getFirstAsync('SELECT * FROM players WHERE id = ?', [id]);
+    if (!result) throw new Error('Player not found after update');
+    
+    return this.mapRowToPlayer(result);
+  }
+
+  async deletePlayer(id: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    // Check if player has any matches
+    const matchCount = await this.db.getFirstAsync(
+      'SELECT COUNT(*) as count FROM matches WHERE player1_id = ? OR player2_id = ?',
+      [id, id]
+    ) as { count: number };
+    
+    if (matchCount.count > 0) {
+      throw new Error('Cannot delete player with existing matches');
+    }
+    
+    const result = await this.db.runAsync('DELETE FROM players WHERE id = ?', [id]);
+    if (result.changes === 0) {
+      throw new Error('Player not found');
+    }
+  }
+
   async createMatch(match: Omit<Match, 'id' | 'createdAt' | 'updatedAt' | 'player1' | 'player2'> & { 
     isDoubles?: boolean; 
     team1Name?: string; 
@@ -659,7 +699,7 @@ class DatabaseService {
     await this.checkAndCompleteTournament(tournamentId, winnerId);
   }
 
-  async checkAndCompleteTournament(tournamentId: string, lastWinnerId: string): Promise<void> {
+  async checkAndCompleteTournament(tournamentId: string, _lastWinnerId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
     // Get all tournament matches

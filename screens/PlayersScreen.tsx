@@ -16,8 +16,12 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
+  const [editModalVisible, setEditModalVisible] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
   const [newPlayerEmail, setNewPlayerEmail] = useState('');
+  const [editingPlayer, setEditingPlayer] = useState<Player | null>(null);
+  const [editPlayerName, setEditPlayerName] = useState('');
+  const [editPlayerEmail, setEditPlayerEmail] = useState('');
 
   useEffect(() => {
     loadPlayers();
@@ -67,6 +71,61 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
     }
   };
 
+  const handleEditPlayer = (player: Player) => {
+    setEditingPlayer(player);
+    setEditPlayerName(player.name);
+    setEditPlayerEmail(player.email || '');
+    setEditModalVisible(true);
+  };
+
+  const handleUpdatePlayer = async () => {
+    if (!editingPlayer || !editPlayerName.trim()) {
+      Alert.alert('Error', 'Player name is required');
+      return;
+    }
+
+    try {
+      const { databaseService } = await import('../services/database');
+      await databaseService.updatePlayer(editingPlayer.id, {
+        name: editPlayerName.trim(),
+        email: editPlayerEmail.trim() || undefined,
+      });
+      loadPlayers();
+      
+      setEditPlayerName('');
+      setEditPlayerEmail('');
+      setEditingPlayer(null);
+      setEditModalVisible(false);
+    } catch (error) {
+      console.error('Failed to update player:', error);
+      Alert.alert('Error', 'Failed to update player');
+    }
+  };
+
+  const handleDeletePlayer = (player: Player) => {
+    Alert.alert(
+      'Delete Player',
+      `Are you sure you want to delete "${player.name}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { databaseService } = await import('../services/database');
+              await databaseService.deletePlayer(player.id);
+              loadPlayers();
+            } catch (error: any) {
+              console.error('Failed to delete player:', error);
+              Alert.alert('Error', error.message || 'Failed to delete player');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const renderPlayer = ({ item }: { item: Player }) => (
     <View style={styles.playerCard}>
       <View style={styles.playerInfo}>
@@ -74,9 +133,20 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
         {item.email && <Text style={styles.playerEmail}>{item.email}</Text>}
         <Text style={styles.playerRating}>Rating: {item.rating}</Text>
       </View>
-      <TouchableOpacity style={styles.playerActions}>
-        <Ionicons name="chevron-forward" size={20} color="#666" />
-      </TouchableOpacity>
+      <View style={styles.playerActions}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleEditPlayer(item)}
+        >
+          <Ionicons name="pencil" size={18} color="#2196F3" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={() => handleDeletePlayer(item)}
+        >
+          <Ionicons name="trash" size={18} color="#F44336" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -151,6 +221,50 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
                 onPress={handleAddPlayer}
               >
                 <Text style={styles.saveButtonText}>Add Player</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={editModalVisible}
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Player</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Player Name"
+              value={editPlayerName}
+              onChangeText={setEditPlayerName}
+            />
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Email (optional)"
+              value={editPlayerEmail}
+              onChangeText={setEditPlayerEmail}
+              keyboardType="email-address"
+            />
+            
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[styles.modalButton, styles.saveButton]}
+                onPress={handleUpdatePlayer}
+              >
+                <Text style={styles.saveButtonText}>Update Player</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -239,7 +353,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   playerActions: {
-    padding: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  actionButton: {
+    padding: 8,
+    borderRadius: 6,
+    backgroundColor: '#f5f5f5',
   },
   modalOverlay: {
     flex: 1,
