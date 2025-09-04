@@ -28,8 +28,48 @@ export interface Match {
   isDoubles?: boolean;
   team1Name?: string;
   team2Name?: string;
+  sets?: GameSet[]; // Detailed set scores
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface GameSet {
+  id: string;
+  matchId: string;
+  setNumber: number;
+  player1Score: number;
+  player2Score: number;
+  winnerId?: string;
+  completedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Game {
+  id: string;
+  setId: string;
+  gameNumber: number;
+  player1Score: number;
+  player2Score: number;
+  server: string;
+  winnerId?: string;
+  completedAt?: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Point {
+  id: string;
+  gameId: string;
+  pointNumber: number;
+  scorerId: string;
+  player1Score: number;
+  player2Score: number;
+  rallyLength?: number;
+  shotType?: string;
+  isWinner: boolean;
+  isError: boolean;
+  timestamp: Date;
 }
 
 

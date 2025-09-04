@@ -55,10 +55,11 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
 
     try {
       const { databaseService } = await import('../services/database');
+      const { EloRatingService } = await import('../services/eloRating');
       await databaseService.createPlayer({
         name: newPlayerName.trim(),
         email: newPlayerEmail.trim() || undefined,
-        rating: 1200,
+        rating: EloRatingService.getStartingRating(),
       });
       loadPlayers();
       
@@ -131,7 +132,7 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
       <View style={styles.playerInfo}>
         <Text style={styles.playerName}>{item.name}</Text>
         {item.email && <Text style={styles.playerEmail}>{item.email}</Text>}
-        <Text style={styles.playerRating}>Rating: {item.rating}</Text>
+        <Text style={styles.playerRating}>Rating: {item.rating} (auto)</Text>
       </View>
       <View style={styles.playerActions}>
         <TouchableOpacity
