@@ -109,6 +109,21 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
                      Math.abs(newTeam1Points - newTeam2Points) >= 2;
 
     if (isSetWon) {
+      const setWinnerId = newTeam1Points > newTeam2Points ? team1.id : team2.id;
+      
+      // Save the completed set to database
+      try {
+        await databaseService.createGameSet(
+          matchId, 
+          currentSet, 
+          newTeam1Points, 
+          newTeam2Points, 
+          setWinnerId
+        );
+      } catch (error) {
+        console.error('Failed to save set score:', error);
+      }
+
       if (newTeam1Points > newTeam2Points) {
         newTeam1Sets++;
       } else {

@@ -9,9 +9,11 @@ import {
   PlayerStatistics, 
   TrendingStats, 
   OverallStatistics,
-  RecentMatch 
+  RecentMatch,
+  GameSet 
 } from '../types/models';
 import { BracketGenerator, BracketMatch } from './bracketGenerator';
+import { EloRatingService, MatchScore } from './eloRating';
 
 class DatabaseService {
   private db: SQLite.SQLiteDatabase | null = null;
@@ -291,6 +293,120 @@ class DatabaseService {
     }
   }
 
+  async updatePlayerRatings(matchId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    // Get match details and player game counts
+    const match = await this.db.getFirstAsync(`
+      SELECT m.*, p1.rating as player1_rating, p2.rating as player2_rating
+      FROM matches m
+      JOIN players p1 ON m.player1_id = p1.id
+      JOIN players p2 ON m.player2_id = p2.id
+      WHERE m.id = ? AND m.status = 'completed' AND m.winner_id IS NOT NULL
+    `, [matchId]) as any;
+    
+    if (!match) {
+      throw new Error('Match not found or not completed');
+    }
+    
+    // Count completed games for each player (for provisional K-factor)
+    const player1GameCount = await this.db.getFirstAsync(`
+      SELECT COUNT(*) as count FROM matches 
+      WHERE (player1_id = ? OR player2_id = ?) AND status = 'completed'
+    `, [match.player1_id, match.player1_id]) as { count: number };
+    
+    const player2GameCount = await this.db.getFirstAsync(`
+      SELECT COUNT(*) as count FROM matches 
+      WHERE (player1_id = ? OR player2_id = ?) AND status = 'completed'
+    `, [match.player2_id, match.player2_id]) as { count: number };
+    
+    const player1Won = match.winner_id === match.player1_id;
+    
+    // Get detailed match scores for enhanced Elo calculation
+    const matchScore = await this.getMatchScore(matchId);
+    
+    // Calculate new ratings using enhanced Elo system with score consideration
+    const eloResult = EloRatingService.calculateNewRatingsWithScore(
+      match.player1_rating,
+      match.player2_rating,
+      player1Won,
+      matchScore,
+      player1GameCount.count,
+      player2GameCount.count
+    );
+    
+    // Update both players' ratings
+    await this.db.runAsync(
+      'UPDATE players SET rating = ?, updated_at = ? WHERE id = ?',
+      [eloResult.player1NewRating, new Date().toISOString(), match.player1_id]
+    );
+    
+    await this.db.runAsync(
+      'UPDATE players SET rating = ?, updated_at = ? WHERE id = ?',
+      [eloResult.player2NewRating, new Date().toISOString(), match.player2_id]
+    );
+    
+    const p1Provisional = player1GameCount.count < 10 ? ' (provisional)' : '';
+    const p2Provisional = player2GameCount.count < 10 ? ' (provisional)' : '';
+    
+    const competitiveness = EloRatingService.getMatchCompetitivenessDescription(matchScore);
+    console.log(`Ratings updated (${competitiveness}): Player 1: ${match.player1_rating} → ${eloResult.player1NewRating} (${eloResult.player1Change >= 0 ? '+' : ''}${eloResult.player1Change})${p1Provisional}, Player 2: ${match.player2_rating} → ${eloResult.player2NewRating} (${eloResult.player2Change >= 0 ? '+' : ''}${eloResult.player2Change})${p2Provisional}`);
+  }
+
+  async getMatchScore(matchId: string): Promise<MatchScore> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    // Get match details
+    const match = await this.db.getFirstAsync(`
+      SELECT player1_sets, player2_sets FROM matches WHERE id = ?
+    `, [matchId]) as { player1_sets: number; player2_sets: number } | null;
+    
+    if (!match) {
+      return { player1Sets: 0, player2Sets: 0, setScores: [] };
+    }
+    
+    // Get detailed set scores
+    const sets = await this.db.getAllAsync(`
+      SELECT player1_score, player2_score FROM game_sets 
+      WHERE match_id = ? ORDER BY set_number ASC
+    `, [matchId]) as Array<{ player1_score: number; player2_score: number }>;
+    
+    return {
+      player1Sets: match.player1_sets,
+      player2Sets: match.player2_sets,
+      setScores: sets.map(set => ({
+        player1Score: set.player1_score,
+        player2Score: set.player2_score,
+      })),
+    };
+  }
+
+  async getMatchSets(matchId: string): Promise<GameSet[]> {
+    if (!this.db) throw new Error('Database not initialized');
+    
+    const sets = await this.db.getAllAsync(`
+      SELECT * FROM game_sets 
+      WHERE match_id = ? 
+      ORDER BY set_number ASC
+    `, [matchId]);
+    
+    return sets.map(this.mapRowToGameSet);
+  }
+
+  private mapRowToGameSet(row: any): GameSet {
+    return {
+      id: row.id,
+      matchId: row.match_id,
+      setNumber: row.set_number,
+      player1Score: row.player1_score,
+      player2Score: row.player2_score,
+      winnerId: row.winner_id,
+      completedAt: row.completed_at ? new Date(row.completed_at) : undefined,
+      createdAt: new Date(row.created_at),
+      updatedAt: new Date(row.updated_at),
+    };
+  }
+
   async createMatch(match: Omit<Match, 'id' | 'createdAt' | 'updatedAt' | 'player1' | 'player2'> & { 
     isDoubles?: boolean; 
     team1Name?: string; 
@@ -337,14 +453,39 @@ class DatabaseService {
     );
   }
 
+  async createGameSet(matchId: string, setNumber: number, player1Score: number, player2Score: number, winnerId: string): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const id = this.generateId();
+    const now = new Date().toISOString();
+
+    await this.db.runAsync(
+      `INSERT INTO game_sets (id, match_id, set_number, player1_score, player2_score, winner_id, completed_at, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, matchId, setNumber, player1Score, player2Score, winnerId, now, now, now]
+    );
+
+    return id;
+  }
+
   async completeMatch(matchId: string, winnerId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
     const now = new Date().toISOString();
+    
+    // Complete the match
     await this.db.runAsync(
       `UPDATE matches SET status = ?, winner_id = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
       ['completed', winnerId, now, now, matchId]
     );
+    
+    // Update Elo ratings automatically
+    try {
+      await this.updatePlayerRatings(matchId);
+    } catch (error) {
+      console.warn('Failed to update Elo ratings:', error);
+      // Don't throw error - match completion is more important than rating updates
+    }
   }
 
   private mapRowToPlayer(row: any): Player {
