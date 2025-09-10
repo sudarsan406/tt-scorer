@@ -197,6 +197,7 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
             <TextInput
               style={styles.input}
               placeholder="Player Name"
+              placeholderTextColor="#999"
               value={newPlayerName}
               onChangeText={setNewPlayerName}
             />
@@ -204,6 +205,7 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
             <TextInput
               style={styles.input}
               placeholder="Email (optional)"
+              placeholderTextColor="#999"
               value={newPlayerEmail}
               onChangeText={setNewPlayerEmail}
               keyboardType="email-address"
@@ -241,6 +243,7 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
             <TextInput
               style={styles.input}
               placeholder="Player Name"
+              placeholderTextColor="#999"
               value={editPlayerName}
               onChangeText={setEditPlayerName}
             />
@@ -248,6 +251,7 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
             <TextInput
               style={styles.input}
               placeholder="Email (optional)"
+              placeholderTextColor="#999"
               value={editPlayerEmail}
               onChangeText={setEditPlayerEmail}
               keyboardType="email-address"
