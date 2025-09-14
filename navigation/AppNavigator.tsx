@@ -37,7 +37,7 @@ function TabNavigator() {
           } else if (route.name === 'Stats') {
             iconName = focused ? 'stats-chart' : 'stats-chart-outline';
           } else {
-            iconName = 'circle';
+            iconName = 'ellipse';
           }
 
           return <Ionicons name={iconName} size={size} color={color} />;
@@ -56,7 +56,7 @@ function TabNavigator() {
       <Tab.Screen 
         name="Home" 
         component={HomeScreen} 
-        options={{ title: 'TT Score' }}
+        options={{ headerShown: false }}
       />
       <Tab.Screen 
         name="Players" 
@@ -108,7 +108,7 @@ export default function AppNavigator() {
         />
         <Stack.Screen 
           name="MatchScoring" 
-          component={MatchScoringScreen}
+          component={MatchScoringScreen as any}
           options={{ title: 'Match Scoring' }}
         />
         <Stack.Screen 
@@ -118,12 +118,12 @@ export default function AppNavigator() {
         />
         <Stack.Screen 
           name="TournamentDetail" 
-          component={TournamentDetailScreen}
+          component={TournamentDetailScreen as any}
           options={{ title: 'Tournament Details' }}
         />
         <Stack.Screen 
           name="TournamentBracket" 
-          component={TournamentBracketScreen}
+          component={TournamentBracketScreen as any}
           options={{ title: 'Tournament Bracket' }}
         />
         <Stack.Screen 

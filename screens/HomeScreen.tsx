@@ -5,6 +5,7 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDatabaseContext } from '../contexts/DatabaseContext';
@@ -76,9 +77,23 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
 
   return (
     <ScrollView style={styles.container}>
-      {/* Header Stats */}
+      {/* Header Section */}
       <View style={styles.headerSection}>
-        <Text style={styles.welcomeTitle}>🏓 TT Score</Text>
+        <View style={styles.topHeader}>
+          <View style={styles.brandContainer}>
+            <View style={styles.ttContainer}>
+              <Text style={styles.ttLetter1}>T</Text>
+              <Text style={styles.ttLetter2}>T</Text>
+            </View>
+            <View style={styles.scorerContainer}>
+              <View style={styles.scoreBoard}>
+                <Text style={styles.scorerText}>Scorer</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+        <Text style={styles.welcomeText}>Ready to play?</Text>
+        <Text style={styles.subtitleText}>Start a match or create a tournament</Text>
       </View>
 
       {/* Quick Actions */}
@@ -86,7 +101,7 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
         <View style={styles.quickActionsGrid}>
           <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('QuickMatch')}>
             <Ionicons name="play-circle" size={32} color="#2196F3" />
-            <Text style={styles.quickActionText}>Quick Match</Text>
+            <Text style={styles.quickActionText}>Start Match</Text>
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('TournamentCreate')}>
@@ -101,7 +116,7 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
           
           <TouchableOpacity style={styles.quickAction} onPress={() => navigation.navigate('Main', { screen: 'Stats' })}>
             <Ionicons name="stats-chart" size={32} color="#9C27B0" />
-            <Text style={styles.quickActionText}>Statistics</Text>
+            <Text style={styles.quickActionText}>Stats</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -208,32 +223,77 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     backgroundColor: '#2196F3',
-    padding: 20,
-    paddingTop: 30,
+    paddingTop: 50,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
   },
-  welcomeTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
-    marginBottom: 20,
+  topHeader: {
+    marginBottom: 15,
   },
-  statsRow: {
+  brandContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-start',
+    marginLeft: 0,
   },
-  statItem: {
+  ttContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    marginRight: 0,
   },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
+  ttLetter1: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.6)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 8,
+    transform: [{ rotate: '-8deg' }, { translateY: -4 }],
+    marginRight: -4,
   },
-  statLabel: {
-    fontSize: 14,
-    color: '#e3f2fd',
-    marginTop: 4,
+  ttLetter2: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.6)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 8,
+    transform: [{ rotate: '8deg' }, { translateY: 4 }],
+  },
+  scorerContainer: {
+    alignSelf: 'flex-end',
+    marginBottom: 4,
+    marginLeft: -8,
+  },
+  scoreBoard: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scorerText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    fontFamily: Platform.OS === 'ios' ? 'Courier New' : 'monospace',
+    textShadowColor: 'rgba(0, 0, 0, 0.5)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+    letterSpacing: 1,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  welcomeText: {
+    fontSize: 20,
+    fontWeight: '500',
+    color: '#FFFFFF',
+    marginBottom: 4,
+    opacity: 0.95,
+  },
+  subtitleText: {
+    fontSize: 15,
+    fontWeight: '400',
+    color: '#E3F2FD',
+    opacity: 0.85,
+    lineHeight: 20,
   },
   section: {
     padding: 20,

@@ -236,7 +236,7 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
         player2Id: match.player2Id,
         team1Name: match.player1Name || 'Player 1',
         team2Name: match.player2Name || 'Player 2',
-        tournamentId: tournament.id,
+        tournamentId: tournament!.id,
         tournamentMatchId: match.id,
       });
     } catch (error) {

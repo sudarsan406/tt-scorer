@@ -1,31 +1,36 @@
 {
   "expo": {
-    "name": "TT Score",
+    "name": "TT Scorer",
     "slug": "tt-score",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/tt-scorer-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/tt-scorer-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#1a2332"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.skanagala.ttscore",
+      "bundleIdentifier": "com.skanagala.ttscorer",
       "config": {
         "usesNonExemptEncryption": false
+      },
+      "infoPlist": {
+        "CFBundleDisplayName": "TT Scorer",
+        "NSCameraUsageDescription": "This app does not use the camera.",
+        "NSMicrophoneUsageDescription": "This app does not use the microphone."
       }
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/tt-scorer-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.skanagala.ttscore"
+      "package": "com.skanagala.ttscorer"
     },
     "web": {
       "favicon": "./assets/favicon.png"
