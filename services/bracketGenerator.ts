@@ -15,6 +15,7 @@ export interface BracketMatch {
   parentMatch2Id?: string;
   player1Sets?: number;
   player2Sets?: number;
+  linkedMatchId?: string;
 }
 
 export class BracketGenerator {

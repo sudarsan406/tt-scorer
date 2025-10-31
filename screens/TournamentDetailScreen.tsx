@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Tournament } from '../types/models';
 import { databaseService } from '../services/database';
+import FooterNavigation from '../components/FooterNavigation';
 
 interface TournamentDetailScreenProps {
   route: {
@@ -264,7 +265,8 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
   }
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.wrapper}>
+      <ScrollView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.titleSection}>
           <Text style={styles.tournamentName}>{tournament.name}</Text>
@@ -364,15 +366,21 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
             <Text style={styles.actionButtonText}>Continue Tournament</Text>
           </TouchableOpacity>
         )}
+        
       </View>
-    </ScrollView>
+      </ScrollView>
+      <FooterNavigation navigation={navigation} />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  wrapper: {
     flex: 1,
     backgroundColor: '#f5f5f5',
+  },
+  container: {
+    flex: 1,
   },
   loadingContainer: {
     flex: 1,

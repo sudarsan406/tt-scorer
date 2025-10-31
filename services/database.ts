@@ -759,6 +759,7 @@ class DatabaseService {
       parentMatch2Id: row.parent_match2_id,
       player1Sets: row.player1_sets || 0,
       player2Sets: row.player2_sets || 0,
+      linkedMatchId: row.match_id,
     }));
   }
 

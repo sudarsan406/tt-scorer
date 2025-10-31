@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "TT Scorer",
-    "slug": "tt-score",
+    "slug": "tt-scorer",
     "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/tt-scorer-icon.png",
@@ -37,7 +37,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "947271cb-e980-4b29-aa17-8af244656acd"
+        "projectId": "22d038dc-1f57-4a70-8115-91a01c529b6d"
       }
     },
     "owner": "sudarsan406"

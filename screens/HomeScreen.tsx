@@ -15,11 +15,6 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
   const { isReady, error } = useDatabaseContext();
   const [recentMatches, setRecentMatches] = useState<Match[]>([]);
   const [topPlayers, setTopPlayers] = useState<Player[]>([]);
-  const [stats, setStats] = useState({
-    totalMatches: 0,
-    totalPlayers: 0,
-    completedToday: 0
-  });
 
   useEffect(() => {
     if (isReady) {
@@ -48,18 +43,6 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
       setRecentMatches(matches.slice(0, 5));
       setTopPlayers(players.sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 3));
       
-      const today = new Date().setHours(0, 0, 0, 0);
-      const completedToday = matches.filter(m => 
-        m.status === 'completed' && 
-        m.completedAt && 
-        new Date(m.completedAt).getTime() >= today
-      ).length;
-      
-      setStats({
-        totalMatches: matches.length,
-        totalPlayers: players.length,
-        completedToday
-      });
     } catch (error) {
       console.error('Failed to load home data:', error);
     }
