@@ -15,9 +15,9 @@
       "distribution": "internal"
     },
     "production": {
-      "developmentClient": false,
       "ios": {
-        "distribution": "store"
+        "distribution": "store",
+        "autoIncrement": true
       }
     }
   },
