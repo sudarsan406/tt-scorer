@@ -15,6 +15,11 @@
       "distribution": "internal"
     },
     "production": {
+      "env": {
+        "NODE_ENV": "production"
+      },
+      "node": "22.11.0",
+      "prebuildCommand": "npm install",
       "ios": {
         "distribution": "store",
         "autoIncrement": true
