@@ -19,7 +19,11 @@
         "NODE_ENV": "production"
       },
       "node": "22.11.0",
-      "prebuildCommand": "npm install",
+      "cache": {
+        "key": "production-cache",
+        "disabled": false,
+        "paths": ["node_modules"]
+      },
       "ios": {
         "distribution": "store",
         "autoIncrement": true
