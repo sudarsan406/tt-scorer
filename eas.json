@@ -15,6 +15,7 @@
       "distribution": "internal"
     },
     "production": {
+      "developmentClient": false,
       "ios": {
         "distribution": "store"
       }
