@@ -1201,43 +1201,61 @@ class DatabaseService {
         LIMIT ?
       `, [playerId, playerId, limit]);
 
-      // Calculate historical ratings by working backwards from current rating
-      const player = await this.db.getFirstAsync('SELECT rating FROM players WHERE id = ?', [playerId]) as { rating: number } | null;
-      if (!player) return [];
+      // Since we don't have historical rating snapshots, we'll simulate the progression
+      // by starting from 1200 (default) and applying Elo changes going forward
 
-      // We'll work backwards through the matches to reconstruct rating history
-      // Start with current rating and reverse the Elo changes
-      let reconstructedRating = player.rating;
       const history: Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }> = [];
 
-      // Process matches from newest to oldest to reverse-calculate ratings
-      for (const match of matches as any[]) {
+      // Reverse matches to go from oldest to newest
+      const chronologicalMatches = [...(matches as any[])].reverse();
+
+      // Build a map of all players' simulated ratings
+      const simulatedRatings = new Map<string, number>();
+      simulatedRatings.set(playerId, 1200); // Start at default
+
+      // Get all opponents and initialize their ratings
+      for (const match of chronologicalMatches) {
+        const opponentId = match.player1_id === playerId ? match.player2_id : match.player1_id;
+        if (!simulatedRatings.has(opponentId)) {
+          simulatedRatings.set(opponentId, 1200);
+        }
+      }
+
+      // Process matches chronologically and track rating changes
+      for (const match of chronologicalMatches) {
         const isPlayer1 = match.player1_id === playerId;
         const won = match.winnerId === playerId;
         const opponentName = isPlayer1 ? match.player2_name : match.player1_name;
-        const opponentRating = isPlayer1 ? match.player2_rating : match.player1_rating;
+        const opponentId = isPlayer1 ? match.player2_id : match.player1_id;
 
-        // Add current reconstructed rating to history
+        const playerRating = simulatedRatings.get(playerId) || 1200;
+        const opponentRating = simulatedRatings.get(opponentId) || 1200;
+
+        // Calculate Elo change
+        const K = 32;
+        const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - playerRating) / 400));
+        const actualScore = won ? 1 : 0;
+        const ratingChange = K * (actualScore - expectedScore);
+
+        // Update simulated rating
+        const newRating = playerRating + ratingChange;
+        simulatedRatings.set(playerId, newRating);
+
+        // Also update opponent's rating
+        const opponentChange = K * ((won ? 0 : 1) - (1 - expectedScore));
+        simulatedRatings.set(opponentId, opponentRating + opponentChange);
+
+        // Add to history
         history.push({
           date: match.date,
-          rating: Math.round(reconstructedRating),
+          rating: Math.round(newRating),
           matchId: match.matchId,
           opponent: opponentName,
           won
         });
-
-        // Reverse the Elo change for this match to get rating before this match
-        const K = 32; // Elo K-factor
-        const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - reconstructedRating) / 400));
-        const actualScore = won ? 1 : 0;
-        const ratingChange = K * (actualScore - expectedScore);
-
-        // Subtract the change to go backwards in time
-        reconstructedRating -= ratingChange;
       }
 
-      // Reverse to show oldest to newest
-      return history.reverse();
+      return history;
     } catch (error) {
       console.error('Error fetching Elo history:', error);
       return [];
