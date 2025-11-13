@@ -59,10 +59,8 @@ export class ExportService {
       const fileName = `tt-scorer-matches-${timestamp}.csv`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      // Write to file
-      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      // Write to file (UTF8 is the default encoding)
+      await FileSystem.writeAsStringAsync(fileUri, csvContent);
 
       // Share the file
       const canShare = await Sharing.isAvailableAsync();
@@ -124,10 +122,8 @@ export class ExportService {
       const fileName = `tt-scorer-backup-${timestamp}.json`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      // Write to file
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2), {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      // Write to file (UTF8 is the default encoding)
+      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
 
       // Share the file
       const canShare = await Sharing.isAvailableAsync();
@@ -174,10 +170,8 @@ export class ExportService {
       const fileName = `tt-scorer-player-stats-${timestamp}.csv`;
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
-      // Write to file
-      await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FileSystem.EncodingType.UTF8,
-      });
+      // Write to file (UTF8 is the default encoding)
+      await FileSystem.writeAsStringAsync(fileUri, csvContent);
 
       // Share the file
       const canShare = await Sharing.isAvailableAsync();
