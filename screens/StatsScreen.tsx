@@ -272,23 +272,29 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
                         borderRadius: 16
                       },
                       propsForDots: {
-                        r: '4',
+                        r: '5',
                         strokeWidth: '2',
-                        stroke: '#2196F3'
+                        stroke: '#2196F3',
+                        fill: '#2196F3'
                       }
                     }}
                     bezier
                     style={styles.chart}
                   />
-                  <View style={styles.chartLegend}>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
-                      <Text style={styles.legendText}>Win</Text>
-                    </View>
-                    <View style={styles.legendItem}>
-                      <View style={[styles.legendDot, { backgroundColor: '#F44336' }]} />
-                      <Text style={styles.legendText}>Loss</Text>
-                    </View>
+                  <View style={styles.matchResultsRow}>
+                    {eloHistory.map((match, idx) => (
+                      <View key={idx} style={styles.matchResult}>
+                        <View style={[
+                          styles.matchDot,
+                          { backgroundColor: match.won ? '#4CAF50' : '#F44336' }
+                        ]} />
+                      </View>
+                    ))}
+                  </View>
+                  <View style={styles.chartNote}>
+                    <Text style={styles.chartNoteText}>
+                      • Green = Win  • Red = Loss
+                    </Text>
                   </View>
                 </View>
               )}
@@ -611,25 +617,28 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
-  chartLegend: {
+  matchResultsRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
+    justifyContent: 'space-evenly',
     marginTop: 10,
-    gap: 20,
+    paddingHorizontal: 20,
   },
-  legendItem: {
-    flexDirection: 'row',
+  matchResult: {
     alignItems: 'center',
   },
-  legendDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 6,
+  matchDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  legendText: {
-    fontSize: 14,
+  chartNote: {
+    marginTop: 8,
+    alignItems: 'center',
+  },
+  chartNoteText: {
+    fontSize: 12,
     color: '#666',
+    fontStyle: 'italic',
   },
   trendsDetails: {
     marginTop: 15,
