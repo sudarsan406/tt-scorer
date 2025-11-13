@@ -6,15 +6,21 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
+  Alert,
+  ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useDatabaseContext } from '../contexts/DatabaseContext';
 import { Match, Player } from '../types/models';
+import { ExportService } from '../services/exportService';
 
 export default function HomeScreen({ navigation }: { navigation: any }) {
   const { isReady, error } = useDatabaseContext();
   const [recentMatches, setRecentMatches] = useState<Match[]>([]);
   const [topPlayers, setTopPlayers] = useState<Player[]>([]);
+  const [exportMenuVisible, setExportMenuVisible] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     if (isReady) {
@@ -34,17 +40,80 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
   const loadHomeData = async () => {
     try {
       const { databaseService } = await import('../services/database');
-      
+
       const [matches, players] = await Promise.all([
         databaseService.getMatches(),
         databaseService.getPlayers()
       ]);
-      
+
       setRecentMatches(matches.slice(0, 5));
       setTopPlayers(players.sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 3));
-      
+
     } catch (error) {
       console.error('Failed to load home data:', error);
+    }
+  };
+
+  const handleExportMatches = async () => {
+    setExportMenuVisible(false);
+    setExporting(true);
+    try {
+      await ExportService.exportMatchesToCSV();
+      Alert.alert(
+        'Success',
+        'Match history exported successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Failed to export match history',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportPlayerStats = async () => {
+    setExportMenuVisible(false);
+    setExporting(true);
+    try {
+      await ExportService.exportPlayerStatsToCSV();
+      Alert.alert(
+        'Success',
+        'Player statistics exported successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Failed to export player statistics',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleBackupDatabase = async () => {
+    setExportMenuVisible(false);
+    setExporting(true);
+    try {
+      await ExportService.backupDatabase();
+      Alert.alert(
+        'Success',
+        'Database backup created successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Backup Failed',
+        error instanceof Error ? error.message : 'Failed to create database backup',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -74,6 +143,12 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
               </View>
             </View>
           </View>
+          <TouchableOpacity
+            style={styles.exportButton}
+            onPress={() => setExportMenuVisible(true)}
+          >
+            <Ionicons name="download-outline" size={24} color="#fff" />
+          </TouchableOpacity>
         </View>
         <Text style={styles.welcomeText}>Ready to play?</Text>
         <Text style={styles.subtitleText}>Start a match or create a tournament</Text>
@@ -176,6 +251,84 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
           </View>
         </View>
       )}
+
+      {/* Export Menu Modal */}
+      <Modal
+        visible={exportMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportMenuVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setExportMenuVisible(false)}
+        >
+          <View style={styles.exportMenu}>
+            <View style={styles.exportMenuHeader}>
+              <Ionicons name="download" size={24} color="#2196F3" />
+              <Text style={styles.exportMenuTitle}>Export Data</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.exportMenuItem}
+              onPress={handleExportMatches}
+            >
+              <Ionicons name="list" size={24} color="#4CAF50" />
+              <View style={styles.exportMenuItemText}>
+                <Text style={styles.exportMenuItemTitle}>Match History</Text>
+                <Text style={styles.exportMenuItemSubtitle}>Export all matches to CSV</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.exportMenuItem}
+              onPress={handleExportPlayerStats}
+            >
+              <Ionicons name="stats-chart" size={24} color="#9C27B0" />
+              <View style={styles.exportMenuItemText}>
+                <Text style={styles.exportMenuItemTitle}>Player Statistics</Text>
+                <Text style={styles.exportMenuItemSubtitle}>Export player stats to CSV</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.exportMenuItem}
+              onPress={handleBackupDatabase}
+            >
+              <Ionicons name="cloud-upload" size={24} color="#FF9800" />
+              <View style={styles.exportMenuItemText}>
+                <Text style={styles.exportMenuItemTitle}>Full Backup</Text>
+                <Text style={styles.exportMenuItemSubtitle}>Backup entire database to JSON</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color="#ccc" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.exportMenuCancel}
+              onPress={() => setExportMenuVisible(false)}
+            >
+              <Text style={styles.exportMenuCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Export Loading Modal */}
+      <Modal
+        visible={exporting}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color="#2196F3" />
+            <Text style={styles.loadingCardText}>Exporting data...</Text>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 
@@ -212,6 +365,14 @@ const styles = StyleSheet.create({
   },
   topHeader: {
     marginBottom: 15,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  exportButton: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
   },
   brandContainer: {
     flexDirection: 'row',
@@ -405,5 +566,84 @@ const styles = StyleSheet.create({
   playerRating: {
     fontSize: 14,
     color: '#666',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  exportMenu: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  exportMenuHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  exportMenuTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginLeft: 12,
+  },
+  exportMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    borderRadius: 10,
+    backgroundColor: '#f8f8f8',
+    marginBottom: 10,
+  },
+  exportMenuItemText: {
+    flex: 1,
+    marginLeft: 15,
+  },
+  exportMenuItemTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  exportMenuItemSubtitle: {
+    fontSize: 13,
+    color: '#666',
+  },
+  exportMenuCancel: {
+    marginTop: 10,
+    padding: 15,
+    alignItems: 'center',
+    borderRadius: 10,
+    backgroundColor: '#f0f0f0',
+  },
+  exportMenuCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#666',
+  },
+  loadingOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCard: {
+    backgroundColor: '#fff',
+    padding: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  loadingCardText: {
+    marginTop: 15,
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
   },
 });

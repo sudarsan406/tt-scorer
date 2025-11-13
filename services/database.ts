@@ -1175,6 +1175,142 @@ class DatabaseService {
     }
   }
 
+  async getPlayerEloHistory(playerId: string, limit: number = 20): Promise<Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Get matches with Elo rating changes
+      const matches = await this.db.getAllAsync(`
+        SELECT
+          m.id as matchId,
+          m.completed_at as date,
+          m.winner_id as winnerId,
+          m.player1_id,
+          m.player2_id,
+          p1.name as player1_name,
+          p1.rating as player1_rating,
+          p2.name as player2_name,
+          p2.rating as player2_rating
+        FROM matches m
+        JOIN players p1 ON m.player1_id = p1.id
+        JOIN players p2 ON m.player2_id = p2.id
+        WHERE (m.player1_id = ? OR m.player2_id = ?)
+          AND m.status = 'completed'
+          AND m.completed_at IS NOT NULL
+        ORDER BY m.completed_at DESC
+        LIMIT ?
+      `, [playerId, playerId, limit]);
+
+      // Calculate historical ratings by working backwards from current rating
+      const player = await this.db.getFirstAsync('SELECT rating FROM players WHERE id = ?', [playerId]) as { rating: number } | null;
+      if (!player) return [];
+
+      let currentRating = player.rating;
+      const history: Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }> = [];
+
+      // Reverse to go from oldest to newest
+      const reversedMatches = [...(matches as any[])].reverse();
+
+      for (const match of reversedMatches) {
+        const isPlayer1 = match.player1_id === playerId;
+        const won = match.winnerId === playerId;
+        const opponentName = isPlayer1 ? match.player2_name : match.player1_name;
+
+        history.push({
+          date: match.date,
+          rating: currentRating,
+          matchId: match.matchId,
+          opponent: opponentName,
+          won
+        });
+      }
+
+      // Reverse back to most recent first
+      return history.reverse();
+    } catch (error) {
+      console.error('Error fetching Elo history:', error);
+      return [];
+    }
+  }
+
+  async getWinLossTrends(playerId: string, period: 'week' | 'month' = 'week'): Promise<Array<{ label: string; wins: number; losses: number; winPercentage: number }>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Get all completed matches for the player
+      const matches = await this.db.getAllAsync(`
+        SELECT
+          m.completed_at as date,
+          m.winner_id as winnerId
+        FROM matches m
+        WHERE (m.player1_id = ? OR m.player2_id = ?)
+          AND m.status = 'completed'
+          AND m.completed_at IS NOT NULL
+        ORDER BY m.completed_at ASC
+      `, [playerId, playerId]);
+
+      if (matches.length === 0) return [];
+
+      // Group matches by period
+      const grouped = new Map<string, { wins: number; losses: number }>();
+
+      for (const match of matches as any[]) {
+        const date = new Date(match.date);
+        let key: string;
+
+        if (period === 'week') {
+          // Get week number
+          const weekStart = new Date(date);
+          weekStart.setDate(date.getDate() - date.getDay());
+          key = weekStart.toISOString().split('T')[0];
+        } else {
+          // Get month
+          key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        }
+
+        if (!grouped.has(key)) {
+          grouped.set(key, { wins: 0, losses: 0 });
+        }
+
+        const stats = grouped.get(key)!;
+        if (match.winnerId === playerId) {
+          stats.wins++;
+        } else {
+          stats.losses++;
+        }
+      }
+
+      // Convert to array and add labels
+      const trends = Array.from(grouped.entries()).map(([key, stats]) => {
+        const total = stats.wins + stats.losses;
+        const winPercentage = total > 0 ? Math.round((stats.wins / total) * 100) : 0;
+
+        let label: string;
+        if (period === 'week') {
+          const date = new Date(key);
+          label = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else {
+          const [year, month] = key.split('-');
+          const date = new Date(parseInt(year), parseInt(month) - 1);
+          label = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+        }
+
+        return {
+          label,
+          wins: stats.wins,
+          losses: stats.losses,
+          winPercentage
+        };
+      });
+
+      // Return last 10 periods
+      return trends.slice(-10);
+    } catch (error) {
+      console.error('Error fetching win/loss trends:', error);
+      return [];
+    }
+  }
+
   private generateId(): string {
     return uuidv4();
   }

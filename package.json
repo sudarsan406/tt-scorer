@@ -1,6 +1,6 @@
 {
   "name": "tt-score",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -16,15 +16,19 @@
     "@react-navigation/stack": "^7.4.7",
     "expo": "~54.0.0",
     "expo-dev-client": "~6.0.12",
+    "expo-file-system": "^19.0.17",
+    "expo-sharing": "^14.0.7",
     "expo-sqlite": "~16.0.8",
     "expo-status-bar": "~3.0.8",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.4",
+    "react-native-chart-kit": "^6.12.0",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-get-random-values": "^1.11.0",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
+    "react-native-svg": "^15.15.0",
     "react-native-web": "^0.21.0",
     "uuid": "^11.1.0"
   },

@@ -6,10 +6,14 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LineChart, BarChart } from 'react-native-chart-kit';
 import { OverallStatistics, PlayerStatistics, StatsPeriod } from '../types/models';
 import { databaseService } from '../services/database';
+
+const screenWidth = Dimensions.get('window').width;
 
 export default function StatsScreen({ navigation }: { navigation: any }) {
   const [overallStats, setOverallStats] = useState<OverallStatistics | null>(null);
@@ -17,6 +21,10 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
   const [selectedPeriod, setSelectedPeriod] = useState<'all' | StatsPeriod>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedPlayerForCharts, setSelectedPlayerForCharts] = useState<string | null>(null);
+  const [eloHistory, setEloHistory] = useState<Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }>>([]);
+  const [winLossTrends, setWinLossTrends] = useState<Array<{ label: string; wins: number; losses: number; winPercentage: number }>>([]);
+  const [chartLoading, setChartLoading] = useState(false);
 
   useEffect(() => {
     loadStatistics();
@@ -40,15 +48,47 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
           selectedPeriod === 'all' ? undefined : selectedPeriod as StatsPeriod
         )
       ]);
-      
+
       setOverallStats(overall);
       setPlayerRankings(rankings);
+
+      // Auto-select top player for charts if available
+      if (rankings.length > 0 && !selectedPlayerForCharts) {
+        const topPlayer = rankings[0];
+        if (topPlayer.player) {
+          setSelectedPlayerForCharts(topPlayer.player.id);
+          loadPlayerCharts(topPlayer.player.id);
+        }
+      } else if (selectedPlayerForCharts) {
+        loadPlayerCharts(selectedPlayerForCharts);
+      }
     } catch (error) {
       console.error('Failed to load statistics:', error);
       setError(error instanceof Error ? error.message : 'Failed to load statistics');
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPlayerCharts = async (playerId: string) => {
+    try {
+      setChartLoading(true);
+      const [history, trends] = await Promise.all([
+        databaseService.getPlayerEloHistory(playerId, 15),
+        databaseService.getWinLossTrends(playerId, 'week')
+      ]);
+      setEloHistory(history);
+      setWinLossTrends(trends);
+    } catch (error) {
+      console.error('Failed to load chart data:', error);
+    } finally {
+      setChartLoading(false);
+    }
+  };
+
+  const handlePlayerSelect = (playerId: string) => {
+    setSelectedPlayerForCharts(playerId);
+    loadPlayerCharts(playerId);
   };
 
   useEffect(() => {
@@ -96,11 +136,13 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
       return null;
     }
 
+    const isSelected = selectedPlayerForCharts === playerStats.player.id;
+
     return (
-      <TouchableOpacity 
-        key={playerStats.player.id} 
-        style={styles.rankingCard}
-        onPress={() => navigation.navigate('PlayerStats', { playerId: playerStats.player!.id })}
+      <TouchableOpacity
+        key={playerStats.player.id}
+        style={[styles.rankingCard, isSelected && styles.rankingCardSelected]}
+        onPress={() => handlePlayerSelect(playerStats.player!.id)}
       >
       <View style={styles.rankingPosition}>
         <Text style={styles.rankingNumber}>#{index + 1}</Text>
@@ -115,6 +157,9 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
         <Text style={styles.statValue}>{playerStats.winPercentage}%</Text>
         <Text style={styles.statSubtext}>Win Rate</Text>
       </View>
+      {isSelected && (
+        <Ionicons name="checkmark-circle" size={24} color="#2196F3" style={styles.checkmark} />
+      )}
     </TouchableOpacity>
     );
   };
@@ -167,6 +212,7 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Player Rankings</Text>
+        <Text style={styles.sectionSubtitle}>Tap a player to view their analytics</Text>
         {playerRankings.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="podium-outline" size={48} color="#ccc" />
@@ -186,6 +232,122 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
           </View>
         )}
       </View>
+
+      {selectedPlayerForCharts && playerRankings.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Analytics: {playerRankings.find(p => p.player?.id === selectedPlayerForCharts)?.player?.name || 'Player'}
+          </Text>
+
+          {chartLoading ? (
+            <View style={styles.chartLoadingContainer}>
+              <ActivityIndicator size="large" color="#2196F3" />
+              <Text style={styles.loadingText}>Loading charts...</Text>
+            </View>
+          ) : (
+            <>
+              {eloHistory.length > 0 && (
+                <View style={styles.chartContainer}>
+                  <Text style={styles.chartTitle}>Elo Rating Progression</Text>
+                  <Text style={styles.chartSubtitle}>Last {eloHistory.length} matches</Text>
+                  <LineChart
+                    data={{
+                      labels: eloHistory.map((_, idx) => idx % 3 === 0 ? `M${idx + 1}` : ''),
+                      datasets: [{
+                        data: eloHistory.map(h => h.rating),
+                        color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
+                        strokeWidth: 3
+                      }]
+                    }}
+                    width={screenWidth - 60}
+                    height={220}
+                    chartConfig={{
+                      backgroundColor: '#ffffff',
+                      backgroundGradientFrom: '#ffffff',
+                      backgroundGradientTo: '#ffffff',
+                      decimalPlaces: 0,
+                      color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
+                      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                      style: {
+                        borderRadius: 16
+                      },
+                      propsForDots: {
+                        r: '4',
+                        strokeWidth: '2',
+                        stroke: '#2196F3'
+                      }
+                    }}
+                    bezier
+                    style={styles.chart}
+                  />
+                  <View style={styles.chartLegend}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#4CAF50' }]} />
+                      <Text style={styles.legendText}>Win</Text>
+                    </View>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#F44336' }]} />
+                      <Text style={styles.legendText}>Loss</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+
+              {winLossTrends.length > 0 && (
+                <View style={styles.chartContainer}>
+                  <Text style={styles.chartTitle}>Win/Loss Trends</Text>
+                  <Text style={styles.chartSubtitle}>Weekly performance over time</Text>
+                  <BarChart
+                    data={{
+                      labels: winLossTrends.map(t => t.label.split(' ')[0]),
+                      datasets: [{
+                        data: winLossTrends.map(t => t.winPercentage)
+                      }]
+                    }}
+                    width={screenWidth - 60}
+                    height={220}
+                    yAxisLabel=""
+                    yAxisSuffix="%"
+                    chartConfig={{
+                      backgroundColor: '#ffffff',
+                      backgroundGradientFrom: '#ffffff',
+                      backgroundGradientTo: '#ffffff',
+                      decimalPlaces: 0,
+                      color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
+                      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                      style: {
+                        borderRadius: 16
+                      }
+                    }}
+                    style={styles.chart}
+                    fromZero
+                  />
+                  <View style={styles.trendsDetails}>
+                    {winLossTrends.slice(-3).reverse().map((trend, idx) => (
+                      <View key={idx} style={styles.trendItem}>
+                        <Text style={styles.trendLabel}>{trend.label}</Text>
+                        <Text style={styles.trendStats}>
+                          {trend.wins}W - {trend.losses}L ({trend.winPercentage}%)
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {eloHistory.length === 0 && winLossTrends.length === 0 && (
+                <View style={styles.emptyState}>
+                  <Ionicons name="analytics-outline" size={48} color="#ccc" />
+                  <Text style={styles.emptyStateText}>No analytics data yet</Text>
+                  <Text style={styles.emptyStateSubtext}>
+                    Play more matches to see analytics
+                  </Text>
+                </View>
+              )}
+            </>
+          )}
+        </View>
+      )}
     </ScrollView>
   );
 }
@@ -262,6 +424,12 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 15,
   },
+  sectionSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 10,
+    marginTop: -10,
+  },
   rankingsContainer: {
     gap: 10,
   },
@@ -276,6 +444,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  rankingCardSelected: {
+    borderColor: '#2196F3',
+    backgroundColor: '#E3F2FD',
+  },
+  checkmark: {
+    marginLeft: 8,
   },
   rankingPosition: {
     width: 40,
@@ -395,6 +572,84 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: 'bold',
+  },
+  chartContainer: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chartTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  chartSubtitle: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 15,
+  },
+  chart: {
+    marginVertical: 8,
+    borderRadius: 16,
+  },
+  chartLoadingContainer: {
+    backgroundColor: '#fff',
+    padding: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  chartLegend: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 20,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  legendText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  trendsDetails: {
+    marginTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 15,
+  },
+  trendItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  trendLabel: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  trendStats: {
+    fontSize: 14,
+    color: '#333',
     fontWeight: 'bold',
   },
 });

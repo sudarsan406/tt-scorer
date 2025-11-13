@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player } from '../types/models';
+import { EloRatingService } from '../services/eloRating';
 
 interface QuickMatchScreenProps {
   navigation: any;
@@ -150,7 +151,7 @@ export default function QuickMatchScreen({ navigation }: QuickMatchScreenProps) 
   }
 
   const minPlayersNeeded = isDoubles ? 4 : 2;
-  
+
   if (players.length < minPlayersNeeded) {
     return (
       <View style={styles.emptyState}>
@@ -165,6 +166,40 @@ export default function QuickMatchScreen({ navigation }: QuickMatchScreenProps) 
         </TouchableOpacity>
       </View>
     );
+  }
+
+  // Calculate match prediction for singles
+  let winProbability = null;
+  let player1WinProb = 0;
+  let player2WinProb = 0;
+  let ratingDifference = 0;
+  let confidenceLevel = '';
+
+  if (!isDoubles && selectedPlayer1 && selectedPlayer2) {
+    const p1Rating = selectedPlayer1.rating || 1200;
+    const p2Rating = selectedPlayer2.rating || 1200;
+    ratingDifference = Math.abs(p1Rating - p2Rating);
+
+    player1WinProb = EloRatingService.calculateWinProbability(p1Rating, p2Rating) * 100;
+    player2WinProb = 100 - player1WinProb;
+
+    // Determine confidence level
+    if (ratingDifference < 50) {
+      confidenceLevel = 'Evenly Matched';
+    } else if (ratingDifference < 100) {
+      confidenceLevel = 'Slight Advantage';
+    } else if (ratingDifference < 200) {
+      confidenceLevel = 'Clear Favorite';
+    } else {
+      confidenceLevel = 'Strong Favorite';
+    }
+
+    winProbability = {
+      player1: player1WinProb,
+      player2: player2WinProb,
+      favorite: player1WinProb > 50 ? selectedPlayer1.name : selectedPlayer2.name,
+      confidence: confidenceLevel
+    };
   }
 
   return (
@@ -246,6 +281,60 @@ export default function QuickMatchScreen({ navigation }: QuickMatchScreenProps) 
           </View>
         )}
       </View>
+
+      {winProbability && !isDoubles && (
+        <View style={styles.predictionSection}>
+          <View style={styles.predictionHeader}>
+            <Ionicons name="analytics" size={24} color="#FF9800" />
+            <Text style={styles.predictionTitle}>Match Prediction</Text>
+          </View>
+
+          <View style={styles.predictionContent}>
+            <View style={styles.probabilityBars}>
+              <View style={styles.playerProbability}>
+                <Text style={styles.playerProbabilityName}>{selectedPlayer1!.name}</Text>
+                <View style={styles.probabilityBarContainer}>
+                  <View style={[styles.probabilityBar, { width: `${winProbability.player1}%`, backgroundColor: '#4CAF50' }]} />
+                </View>
+                <Text style={styles.probabilityText}>{winProbability.player1.toFixed(1)}%</Text>
+              </View>
+
+              <View style={styles.playerProbability}>
+                <Text style={styles.playerProbabilityName}>{selectedPlayer2!.name}</Text>
+                <View style={styles.probabilityBarContainer}>
+                  <View style={[styles.probabilityBar, { width: `${winProbability.player2}%`, backgroundColor: '#2196F3' }]} />
+                </View>
+                <Text style={styles.probabilityText}>{winProbability.player2.toFixed(1)}%</Text>
+              </View>
+            </View>
+
+            <View style={styles.predictionDetails}>
+              <View style={styles.predictionDetailRow}>
+                <Ionicons name="trophy-outline" size={20} color="#FF9800" />
+                <Text style={styles.predictionDetailLabel}>Predicted Winner:</Text>
+                <Text style={styles.predictionDetailValue}>{winProbability.favorite}</Text>
+              </View>
+              <View style={styles.predictionDetailRow}>
+                <Ionicons name="speedometer-outline" size={20} color="#FF9800" />
+                <Text style={styles.predictionDetailLabel}>Confidence:</Text>
+                <Text style={styles.predictionDetailValue}>{winProbability.confidence}</Text>
+              </View>
+              <View style={styles.predictionDetailRow}>
+                <Ionicons name="stats-chart-outline" size={20} color="#FF9800" />
+                <Text style={styles.predictionDetailLabel}>Rating Difference:</Text>
+                <Text style={styles.predictionDetailValue}>{ratingDifference} pts</Text>
+              </View>
+            </View>
+
+            <View style={styles.predictionNote}>
+              <Ionicons name="information-circle-outline" size={16} color="#666" />
+              <Text style={styles.predictionNoteText}>
+                Prediction based on Elo rating difference. Actual results may vary.
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
 
       <View style={styles.matchSettings}>
         <Text style={styles.settingsTitle}>Match Settings</Text>
@@ -556,5 +645,96 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  predictionSection: {
+    backgroundColor: '#FFF8E1',
+    margin: 20,
+    padding: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#FFB300',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  predictionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  predictionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FF9800',
+    marginLeft: 10,
+  },
+  predictionContent: {
+    gap: 15,
+  },
+  probabilityBars: {
+    gap: 12,
+  },
+  playerProbability: {
+    gap: 6,
+  },
+  playerProbabilityName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  probabilityBarContainer: {
+    height: 24,
+    backgroundColor: '#E0E0E0',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  probabilityBar: {
+    height: '100%',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    paddingRight: 8,
+  },
+  probabilityText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+    textAlign: 'right',
+  },
+  predictionDetails: {
+    backgroundColor: '#fff',
+    padding: 15,
+    borderRadius: 8,
+    gap: 10,
+    marginTop: 5,
+  },
+  predictionDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  predictionDetailLabel: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+  },
+  predictionDetailValue: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  predictionNote: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 5,
+  },
+  predictionNoteText: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+    flex: 1,
   },
 });
