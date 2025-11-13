@@ -1205,27 +1205,38 @@ class DatabaseService {
       const player = await this.db.getFirstAsync('SELECT rating FROM players WHERE id = ?', [playerId]) as { rating: number } | null;
       if (!player) return [];
 
-      let currentRating = player.rating;
+      // We'll work backwards through the matches to reconstruct rating history
+      // Start with current rating and reverse the Elo changes
+      let reconstructedRating = player.rating;
       const history: Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }> = [];
 
-      // Reverse to go from oldest to newest
-      const reversedMatches = [...(matches as any[])].reverse();
-
-      for (const match of reversedMatches) {
+      // Process matches from newest to oldest to reverse-calculate ratings
+      for (const match of matches as any[]) {
         const isPlayer1 = match.player1_id === playerId;
         const won = match.winnerId === playerId;
         const opponentName = isPlayer1 ? match.player2_name : match.player1_name;
+        const opponentRating = isPlayer1 ? match.player2_rating : match.player1_rating;
 
+        // Add current reconstructed rating to history
         history.push({
           date: match.date,
-          rating: currentRating,
+          rating: Math.round(reconstructedRating),
           matchId: match.matchId,
           opponent: opponentName,
           won
         });
+
+        // Reverse the Elo change for this match to get rating before this match
+        const K = 32; // Elo K-factor
+        const expectedScore = 1 / (1 + Math.pow(10, (opponentRating - reconstructedRating) / 400));
+        const actualScore = won ? 1 : 0;
+        const ratingChange = K * (actualScore - expectedScore);
+
+        // Subtract the change to go backwards in time
+        reconstructedRating -= ratingChange;
       }
 
-      // Reverse back to most recent first
+      // Reverse to show oldest to newest
       return history.reverse();
     } catch (error) {
       console.error('Error fetching Elo history:', error);
