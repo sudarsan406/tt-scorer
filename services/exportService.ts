@@ -191,6 +191,77 @@ export class ExportService {
   }
 
   /**
+   * Export tournament bracket and results to CSV
+   */
+  static async exportTournamentToCSV(tournamentId: string): Promise<void> {
+    try {
+      const tournaments = await databaseService.getTournaments();
+      const tournament = tournaments.find(t => t.id === tournamentId);
+
+      if (!tournament) {
+        throw new Error('Tournament not found');
+      }
+
+      const bracket = await databaseService.getTournamentBracket(tournamentId);
+
+      if (bracket.length === 0) {
+        throw new Error('No bracket data to export');
+      }
+
+      // CSV Header
+      let csvContent = 'Round,Match #,Player 1,Player 2,Score,Winner,Status\n';
+
+      // CSV Rows - organized by round
+      const rounds = [...new Set(bracket.map(m => m.round))].sort((a, b) => a - b);
+
+      for (const round of rounds) {
+        const roundMatches = bracket.filter(m => m.round === round);
+
+        for (const match of roundMatches) {
+          const player1 = match.player1?.name || 'TBD';
+          const player2 = match.player2?.name || 'TBD';
+          const score = match.status === 'completed'
+            ? `${match.player1Sets}-${match.player2Sets}`
+            : '-';
+          const winner = match.winner?.name || '-';
+          const status = match.status.charAt(0).toUpperCase() + match.status.slice(1);
+
+          // Escape commas in names
+          const escapedPlayer1 = player1.includes(',') ? `"${player1}"` : player1;
+          const escapedPlayer2 = player2.includes(',') ? `"${player2}"` : player2;
+          const escapedWinner = winner.includes(',') ? `"${winner}"` : winner;
+
+          csvContent += `Round ${round},${match.matchNumber},${escapedPlayer1},${escapedPlayer2},${score},${escapedWinner},${status}\n`;
+        }
+      }
+
+      // Generate filename with tournament name and timestamp
+      const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
+      const tournamentName = tournament.name.replace(/[^a-z0-9]/gi, '-').toLowerCase();
+      const fileName = `tournament-${tournamentName}-${timestamp}.csv`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+
+      // Write to file (UTF8 is the default encoding)
+      await FileSystem.writeAsStringAsync(fileUri, csvContent);
+
+      // Share the file
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Export Tournament Bracket',
+          UTI: 'public.comma-separated-values-text',
+        });
+      } else {
+        throw new Error('Sharing is not available on this device');
+      }
+    } catch (error) {
+      console.error('Failed to export tournament:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Get backup file info
    */
   static async getBackupInfo(): Promise<{ size: number; date: Date } | null> {

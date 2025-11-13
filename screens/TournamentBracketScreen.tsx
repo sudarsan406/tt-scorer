@@ -14,6 +14,7 @@ import { BracketMatch } from '../services/bracketGenerator';
 import { databaseService } from '../services/database';
 import MatchCard from '../components/MatchCard';
 import FooterNavigation from '../components/FooterNavigation';
+import { ExportService } from '../services/exportService';
 
 interface TournamentBracketScreenProps {
   route: {
@@ -29,6 +30,7 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [bracketMatches, setBracketMatches] = useState<BracketMatch[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadTournamentData();
@@ -67,6 +69,31 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
     }
   };
 
+
+  const handleExport = async () => {
+    if (bracketMatches.length === 0) {
+      Alert.alert('No Data', 'No bracket data to export');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      await ExportService.exportTournamentToCSV(tournamentId);
+      Alert.alert(
+        'Success',
+        'Tournament bracket exported successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Failed to export tournament bracket',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleMatchPress = (match: BracketMatch) => {
     if (match.status === 'scheduled' && match.player1Id && match.player2Id) {
@@ -230,17 +257,31 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
           <Text style={styles.formatText}>
             {tournament.format === 'single_elimination' ? 'Single Elimination' : 'Round Robin'}
           </Text>
-          {tournament.status === 'completed' && (
-            <TouchableOpacity 
-              style={styles.tournamentDetailsButton}
-              onPress={() => navigation.navigate('TournamentDetail', { tournamentId: tournament.id })}
+          <View style={styles.headerButtons}>
+            {tournament.status === 'completed' && (
+              <TouchableOpacity
+                style={styles.tournamentDetailsButton}
+                onPress={() => navigation.navigate('TournamentDetail', { tournamentId: tournament.id })}
+              >
+                <Ionicons name="trophy" size={16} color="#fff" />
+                <Text style={styles.tournamentDetailsButtonText}>View Winner</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.exportButton, exporting && styles.exportButtonDisabled]}
+              onPress={handleExport}
+              disabled={exporting || bracketMatches.length === 0}
             >
-              <Ionicons name="trophy" size={16} color="#fff" />
-              <Text style={styles.tournamentDetailsButtonText}>View Winner</Text>
+              {exporting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons name="download-outline" size={16} color="#fff" />
+              )}
+              <Text style={styles.exportButtonText}>Export</Text>
             </TouchableOpacity>
-          )}
+          </View>
         </View>
-        
+
       </View>
 
       <ScrollView style={styles.mainScrollContainer} showsVerticalScrollIndicator={true}>
@@ -305,6 +346,12 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#e3f2fd',
   },
+  headerButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
   tournamentDetailsButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -312,10 +359,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 15,
-    marginTop: 8,
     gap: 4,
   },
   tournamentDetailsButtonText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  exportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    gap: 4,
+  },
+  exportButtonDisabled: {
+    opacity: 0.5,
+  },
+  exportButtonText: {
     color: '#fff',
     fontSize: 12,
     fontWeight: 'bold',
