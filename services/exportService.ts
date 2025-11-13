@@ -3,9 +3,6 @@ import * as Sharing from 'expo-sharing';
 import { databaseService } from './database';
 import { Player, Match } from '../types/models';
 
-// Type-safe access to FileSystem constants
-const FS = FileSystem as any;
-
 export class ExportService {
   /**
    * Export match history to CSV format
@@ -60,11 +57,11 @@ export class ExportService {
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
       const fileName = `tt-scorer-matches-${timestamp}.csv`;
-      const fileUri = `${FS.documentDirectory}${fileName}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
       // Write to file
       await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FS.EncodingType.UTF8,
+        encoding: FileSystem.EncodingType.UTF8,
       });
 
       // Share the file
@@ -125,11 +122,11 @@ export class ExportService {
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
       const fileName = `tt-scorer-backup-${timestamp}.json`;
-      const fileUri = `${FS.documentDirectory}${fileName}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
       // Write to file
       await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2), {
-        encoding: FS.EncodingType.UTF8,
+        encoding: FileSystem.EncodingType.UTF8,
       });
 
       // Share the file
@@ -175,11 +172,11 @@ export class ExportService {
       // Generate filename with timestamp
       const timestamp = new Date().toISOString().replace(/:/g, '-').split('.')[0];
       const fileName = `tt-scorer-player-stats-${timestamp}.csv`;
-      const fileUri = `${FS.documentDirectory}${fileName}`;
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
 
       // Write to file
       await FileSystem.writeAsStringAsync(fileUri, csvContent, {
-        encoding: FS.EncodingType.UTF8,
+        encoding: FileSystem.EncodingType.UTF8,
       });
 
       // Share the file
@@ -204,7 +201,7 @@ export class ExportService {
    */
   static async getBackupInfo(): Promise<{ size: number; date: Date } | null> {
     try {
-      const files = await FileSystem.readDirectoryAsync(FS.documentDirectory || '');
+      const files = await FileSystem.readDirectoryAsync(FileSystem.documentDirectory || '');
       const backupFiles = files.filter(file => file.startsWith('tt-scorer-backup-'));
 
       if (backupFiles.length === 0) {
@@ -213,7 +210,7 @@ export class ExportService {
 
       // Get the most recent backup
       const latestBackup = backupFiles.sort().reverse()[0];
-      const fileUri = `${FS.documentDirectory}${latestBackup}`;
+      const fileUri = `${FileSystem.documentDirectory}${latestBackup}`;
       const fileInfo = await FileSystem.getInfoAsync(fileUri);
 
       if (fileInfo.exists) {
