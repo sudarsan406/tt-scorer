@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LineChart, BarChart } from 'react-native-chart-kit';
 import { OverallStatistics, PlayerStatistics, StatsPeriod } from '../types/models';
 import { databaseService } from '../services/database';
+import { ExportService } from '../services/exportService';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -25,6 +27,7 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
   const [eloHistory, setEloHistory] = useState<Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }>>([]);
   const [winLossTrends, setWinLossTrends] = useState<Array<{ label: string; wins: number; losses: number; winPercentage: number }>>([]);
   const [chartLoading, setChartLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadStatistics();
@@ -89,6 +92,31 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
   const handlePlayerSelect = (playerId: string) => {
     setSelectedPlayerForCharts(playerId);
     loadPlayerCharts(playerId);
+  };
+
+  const handleExport = async () => {
+    if (playerRankings.length === 0) {
+      Alert.alert('No Data', 'No player statistics to export');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      await ExportService.exportPlayerStatsToCSV();
+      Alert.alert(
+        'Success',
+        'Player statistics exported successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Failed to export player statistics',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   useEffect(() => {
@@ -168,6 +196,17 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Statistics Overview</Text>
+        <TouchableOpacity
+          style={[styles.exportButtonHeader, exporting && styles.exportButtonDisabled]}
+          onPress={handleExport}
+          disabled={exporting || playerRankings.length === 0}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="download-outline" size={20} color="#fff" />
+          )}
+        </TouchableOpacity>
       </View>
 
       <View style={styles.statsGrid}>
@@ -377,12 +416,22 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2196F3',
     padding: 20,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
+  },
+  exportButtonHeader: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    padding: 10,
+    borderRadius: 8,
+  },
+  exportButtonDisabled: {
+    opacity: 0.5,
   },
   statsGrid: {
     flexDirection: 'row',

@@ -6,14 +6,17 @@ import {
   TouchableOpacity,
   FlatList,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Match, GameSet } from '../types/models';
 import MatchCard from '../components/MatchCard';
+import { ExportService } from '../services/exportService';
 
 export default function MatchesScreen({ navigation }: { navigation: any }) {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadMatches();
@@ -41,6 +44,31 @@ export default function MatchesScreen({ navigation }: { navigation: any }) {
 
   const handleNewMatch = () => {
     navigation.navigate('QuickMatch');
+  };
+
+  const handleExport = async () => {
+    if (matches.length === 0) {
+      Alert.alert('No Data', 'No matches to export');
+      return;
+    }
+
+    setExporting(true);
+    try {
+      await ExportService.exportMatchesToCSV();
+      Alert.alert(
+        'Success',
+        'Match history exported successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Failed to export match history',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
 
@@ -87,10 +115,25 @@ export default function MatchesScreen({ navigation }: { navigation: any }) {
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.newMatchButton} onPress={handleNewMatch}>
-        <Ionicons name="add" size={24} color="#fff" />
-        <Text style={styles.newMatchButtonText}>New Match</Text>
-      </TouchableOpacity>
+      <View style={styles.headerButtons}>
+        <TouchableOpacity style={styles.newMatchButton} onPress={handleNewMatch}>
+          <Ionicons name="add" size={24} color="#fff" />
+          <Text style={styles.newMatchButtonText}>New Match</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.exportButton, exporting && styles.exportButtonDisabled]}
+          onPress={handleExport}
+          disabled={exporting || matches.length === 0}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#2196F3" />
+          ) : (
+            <Ionicons name="download-outline" size={24} color="#2196F3" />
+          )}
+          <Text style={styles.exportButtonText}>Export</Text>
+        </TouchableOpacity>
+      </View>
 
       {matches.length === 0 ? (
         <View style={styles.emptyState}>
@@ -121,17 +164,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: 10,
+    margin: 20,
+  },
   newMatchButton: {
     backgroundColor: '#2196F3',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 15,
-    margin: 20,
     borderRadius: 10,
+    flex: 1,
   },
   newMatchButtonText: {
     color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  exportButton: {
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#2196F3',
+  },
+  exportButtonDisabled: {
+    opacity: 0.5,
+  },
+  exportButtonText: {
+    color: '#2196F3',
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 8,
