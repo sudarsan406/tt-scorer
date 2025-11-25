@@ -97,14 +97,20 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
 
   const handleMatchPress = (match: BracketMatch) => {
     if (match.status === 'scheduled' && match.player1Id && match.player2Id) {
+      const team1Display = match.team1Name || match.player1Name || 'Team 1';
+      const team2Display = match.team2Name || match.player2Name || 'Team 2';
+
       Alert.alert(
         'Start Match',
-        `Start match between ${match.player1Name} and ${match.player2Name}?`,
+        `Start match between ${team1Display} and ${team2Display}?`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Start', onPress: () => startMatch(match) }
         ]
       );
+    } else if (match.status === 'in_progress') {
+      // Resume in-progress match
+      resumeMatch(match);
     } else if (match.status === 'completed') {
       // For completed matches, only handle expansion via score section
       return;
@@ -120,7 +126,11 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
     }
 
     try {
-      
+      // Check if this is a doubles match
+      const isDoublesMatch = !!(match.player3Id && match.player4Id);
+      const team1Display = match.team1Name || match.player1Name || 'Team 1';
+      const team2Display = match.team2Name || match.player2Name || 'Team 2';
+
       // Create a regular match for scoring
       const matchId = await databaseService.createMatch({
         player1Id: match.player1Id,
@@ -131,21 +141,23 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
         player1Sets: 0,
         player2Sets: 0,
         startedAt: new Date(),
-        isDoubles: false,
-        team1Name: match.player1Name || 'Player 1',
-        team2Name: match.player2Name || 'Player 2',
+        isDoubles: isDoublesMatch,
+        team1Name: team1Display,
+        team2Name: team2Display,
       });
 
       // Update tournament match status
       await databaseService.updateTournamentMatchStatus(match.id, 'in_progress', undefined, matchId);
 
-      navigation.navigate('MatchScoring', { 
+      navigation.navigate('MatchScoring', {
         matchId,
-        isDoubles: false,
+        isDoubles: isDoublesMatch,
         player1Id: match.player1Id,
         player2Id: match.player2Id,
-        team1Name: match.player1Name || 'Player 1',
-        team2Name: match.player2Name || 'Player 2',
+        player3Id: match.player3Id,
+        player4Id: match.player4Id,
+        team1Name: team1Display,
+        team2Name: team2Display,
         tournamentId,
         tournamentMatchId: match.id,
       });
@@ -155,8 +167,42 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
     }
   };
 
+  const resumeMatch = async (match: BracketMatch) => {
+    if (!match.linkedMatchId) {
+      Alert.alert('Error', 'Cannot resume match - match ID not found');
+      return;
+    }
+
+    try {
+      // Check if this is a doubles match
+      const isDoublesMatch = !!(match.player3Id && match.player4Id);
+      const team1Display = match.team1Name || match.player1Name || 'Team 1';
+      const team2Display = match.team2Name || match.player2Name || 'Team 2';
+
+      // Navigate to the match scoring screen to resume
+      navigation.navigate('MatchScoring', {
+        matchId: match.linkedMatchId,
+        isDoubles: isDoublesMatch,
+        player1Id: match.player1Id,
+        player2Id: match.player2Id,
+        player3Id: match.player3Id,
+        player4Id: match.player4Id,
+        team1Name: team1Display,
+        team2Name: team2Display,
+        tournamentId,
+        tournamentMatchId: match.id,
+      });
+    } catch (error) {
+      console.error('Failed to resume match:', error);
+      Alert.alert('Error', 'Failed to resume match');
+    }
+  };
 
   const renderMatch = (match: BracketMatch) => {
+    // Display team names for doubles, otherwise player names
+    const team1Display = match.team1Name || match.player1Name || 'TBD';
+    const team2Display = match.team2Name || match.player2Name || 'TBD';
+
     return (
       <MatchCard
         key={match.id}
@@ -164,8 +210,8 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
         status={match.status}
         player1Id={match.player1Id || ''}
         player2Id={match.player2Id || ''}
-        player1Name={match.player1Name || 'TBD'}
-        player2Name={match.player2Name || 'TBD'}
+        player1Name={team1Display}
+        player2Name={team2Display}
         player1Sets={match.player1Sets}
         player2Sets={match.player2Sets}
         winnerId={match.winnerId}

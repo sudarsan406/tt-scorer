@@ -1,6 +1,7 @@
-# Privacy Policy for TT Scorer
+# TT Scorer Privacy Policy
 
-**Last Updated:** November 10, 2024
+**Effective Date:** November 17, 2025
+**Last Updated:** November 17, 2025
 
 ## Introduction
 
@@ -45,12 +46,27 @@ All data is stored locally on your device and is protected by your device's secu
 
 We may update our Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Last Updated" date.
 
+## Data Export
+
+The app provides export functionality that allows you to:
+- Export match history to CSV format
+- Export player statistics to CSV format
+- Export tournament results to CSV format
+- Create database backups in JSON format
+
+**Important:** When you use the export feature:
+- Files are saved locally to your device
+- You can share exported files using iOS native sharing (Messages, Mail, Files, etc.)
+- TT Scorer does not receive, store, or have access to any exported data
+- You are responsible for how you share and distribute exported files
+
 ## Data Retention and Deletion
 
 Since all data is stored locally on your device:
 - Data persists as long as the app is installed
 - Deleting the app removes all associated data
 - No data recovery is possible after app deletion
+- You can delete individual players, matches, or tournaments within the app
 
 ## Your Rights
 

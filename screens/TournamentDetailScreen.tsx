@@ -7,10 +7,12 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Tournament } from '../types/models';
 import { databaseService } from '../services/database';
+import { ExportService } from '../services/exportService';
 import FooterNavigation from '../components/FooterNavigation';
 
 interface TournamentDetailScreenProps {
@@ -26,10 +28,22 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
   const { tournamentId } = route.params;
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editedName, setEditedName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadTournament();
-  }, []);
+
+    // Add listener to reload tournament when screen comes into focus
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadTournament();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   const loadTournament = async () => {
     try {
@@ -38,6 +52,7 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
       
       if (tournamentData) {
         setTournament(tournamentData);
+        setEditedName(tournamentData.name);
         navigation.setOptions({
           title: tournamentData.name,
         });
@@ -93,6 +108,94 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
     }
   };
 
+  const handleEditName = () => {
+    setEditMode(true);
+    setEditedName(tournament?.name || '');
+  };
+
+  const handleSaveName = async () => {
+    if (!tournament || !editedName.trim()) {
+      Alert.alert('Error', 'Tournament name cannot be empty');
+      return;
+    }
+
+    if (editedName.trim() === tournament.name) {
+      setEditMode(false);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await databaseService.updateTournamentName(tournamentId, editedName.trim());
+
+      // Update local state
+      setTournament({ ...tournament, name: editedName.trim() });
+      navigation.setOptions({
+        title: editedName.trim(),
+      });
+
+      setEditMode(false);
+      Alert.alert('Success', 'Tournament name updated successfully');
+    } catch (error) {
+      console.error('Failed to update tournament name:', error);
+      Alert.alert('Error', 'Failed to update tournament name. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditMode(false);
+    setEditedName(tournament?.name || '');
+  };
+
+  const handleDeleteTournament = () => {
+    if (!tournament) return;
+
+    let warningMessage = `Are you sure you want to delete "${tournament.name}"?\n\nThis will permanently delete the tournament and all associated matches and scores.`;
+
+    if (tournament.status === 'in_progress') {
+      warningMessage = `WARNING: "${tournament.name}" is currently in progress!\n\nDeleting this tournament will stop all active matches and permanently delete all scores.\n\nAre you absolutely sure you want to delete it?`;
+    } else if (tournament.status === 'completed') {
+      warningMessage = `Are you sure you want to delete "${tournament.name}"?\n\nThis completed tournament and all its match history will be permanently deleted.`;
+    }
+
+    Alert.alert(
+      'Delete Tournament',
+      warningMessage,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await databaseService.deleteTournament(tournamentId);
+              Alert.alert(
+                'Success',
+                'Tournament deleted successfully',
+                [
+                  {
+                    text: 'OK',
+                    onPress: () => navigation.navigate('Tournaments'),
+                  },
+                ]
+              );
+            } catch (error) {
+              console.error('Failed to delete tournament:', error);
+              Alert.alert('Error', 'Failed to delete tournament. Please try again.');
+              setDeleting(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleStartTournament = async () => {
     if (!tournament) return;
     
@@ -132,6 +235,28 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
   const handleViewBracket = () => {
     if (!tournament) return;
     navigation.navigate('TournamentBracket', { tournamentId: tournament.id });
+  };
+
+  const handleExportBracket = async () => {
+    if (!tournament) return;
+
+    setExporting(true);
+    try {
+      await ExportService.exportTournamentBracket(tournament.id, tournament.name);
+      Alert.alert(
+        'Success',
+        'Tournament bracket exported successfully!',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      Alert.alert(
+        'Export Failed',
+        error instanceof Error ? error.message : 'Failed to export tournament bracket',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setExporting(false);
+    }
   };
 
   const handleContinueTournament = async () => {
@@ -268,15 +393,56 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
     <View style={styles.wrapper}>
       <ScrollView style={styles.container}>
       <View style={styles.header}>
-        <View style={styles.titleSection}>
-          <Text style={styles.tournamentName}>{tournament.name}</Text>
-          {tournament.description && (
-            <Text style={styles.description}>{tournament.description}</Text>
+        <View style={styles.headerTop}>
+          {editMode ? (
+            <View style={styles.editNameContainer}>
+              <TextInput
+                style={styles.nameInput}
+                value={editedName}
+                onChangeText={setEditedName}
+                autoFocus
+                placeholder="Tournament Name"
+                editable={!saving}
+              />
+              <View style={styles.editButtons}>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.saveButton]}
+                  onPress={handleSaveName}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="checkmark" size={20} color="#fff" />
+                  )}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.editButton, styles.cancelButton]}
+                  onPress={handleCancelEdit}
+                  disabled={saving}
+                >
+                  <Ionicons name="close" size={20} color="#fff" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.nameContainer}>
+              <Text style={styles.tournamentName}>{tournament.name}</Text>
+              <TouchableOpacity
+                style={styles.editIconButton}
+                onPress={handleEditName}
+              >
+                <Ionicons name="pencil" size={18} color="#fff" />
+              </TouchableOpacity>
+            </View>
           )}
+          <View style={[styles.statusBadge, { backgroundColor: getStatusColor(tournament.status) }]}>
+            <Text style={styles.statusText}>{getStatusText(tournament.status)}</Text>
+          </View>
         </View>
-        <View style={[styles.statusBadge, { backgroundColor: getStatusColor(tournament.status) }]}>
-          <Text style={styles.statusText}>{getStatusText(tournament.status)}</Text>
-        </View>
+        {tournament.description && !editMode && (
+          <Text style={styles.description}>{tournament.description}</Text>
+        )}
       </View>
 
       <View style={styles.infoSection}>
@@ -352,6 +518,21 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
           <Ionicons name="git-network" size={24} color="#2196F3" />
           <Text style={styles.secondaryActionButtonText}>View Bracket</Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.secondaryActionButton, exporting && styles.exportButtonDisabled]}
+          onPress={handleExportBracket}
+          disabled={exporting}
+        >
+          {exporting ? (
+            <ActivityIndicator size="small" color="#2196F3" />
+          ) : (
+            <Ionicons name="download-outline" size={24} color="#2196F3" />
+          )}
+          <Text style={[styles.secondaryActionButtonText, exporting && { marginLeft: 10 }]}>
+            Export Bracket
+          </Text>
+        </TouchableOpacity>
         
         {tournament.status === 'upcoming' && (
           <TouchableOpacity style={styles.actionButton} onPress={handleStartTournament}>
@@ -366,7 +547,23 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
             <Text style={styles.actionButtonText}>Continue Tournament</Text>
           </TouchableOpacity>
         )}
-        
+
+        {/* Delete button - always visible */}
+        <TouchableOpacity
+          style={[styles.actionButton, { backgroundColor: '#e74c3c', marginTop: 20 }]}
+          onPress={handleDeleteTournament}
+          disabled={deleting}
+        >
+          {deleting ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <>
+              <Ionicons name="trash-outline" size={24} color="#fff" />
+              <Text style={styles.actionButtonText}>Delete Tournament</Text>
+            </>
+          )}
+        </TouchableOpacity>
+
       </View>
       </ScrollView>
       <FooterNavigation navigation={navigation} />
@@ -407,6 +604,8 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: '#2196F3',
     padding: 20,
+  },
+  headerTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
@@ -419,16 +618,63 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 8,
+  },
+  nameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  editIconButton: {
+    marginLeft: 10,
+    padding: 6,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 15,
+  },
+  editNameContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 10,
+  },
+  nameInput: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#fff',
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 10,
+  },
+  editButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  editButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  saveButton: {
+    backgroundColor: '#4CAF50',
+  },
+  cancelButton: {
+    backgroundColor: '#e74c3c',
   },
   description: {
     fontSize: 16,
     color: '#e3f2fd',
+    marginTop: 10,
   },
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
+    alignSelf: 'flex-start',
   },
   statusText: {
     color: '#fff',
@@ -576,5 +822,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  exportButtonDisabled: {
+    opacity: 0.5,
   },
 });

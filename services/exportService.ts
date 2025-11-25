@@ -218,12 +218,12 @@ export class ExportService {
         const roundMatches = bracket.filter(m => m.round === round);
 
         for (const match of roundMatches) {
-          const player1 = match.player1?.name || 'TBD';
-          const player2 = match.player2?.name || 'TBD';
+          const player1 = match.team1Name || match.player1Name || 'TBD';
+          const player2 = match.team2Name || match.player2Name || 'TBD';
           const score = match.status === 'completed'
             ? `${match.player1Sets}-${match.player2Sets}`
             : '-';
-          const winner = match.winner?.name || '-';
+          const winner = match.winnerId ? (match.team1Name || match.player1Name || 'TBD') : '-';
           const status = match.status.charAt(0).toUpperCase() + match.status.slice(1);
 
           // Escape commas in names

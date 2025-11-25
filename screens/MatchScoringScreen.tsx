@@ -9,7 +9,7 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Player } from '../types/models';
+import { Player, GameSet } from '../types/models';
 import { databaseService } from '../services/database';
 
 interface MatchScoringScreenProps {
@@ -30,12 +30,20 @@ interface MatchScoringScreenProps {
   navigation: any;
 }
 
+interface ScoreSnapshot {
+  team1Sets: number;
+  team2Sets: number;
+  team1Points: number;
+  team2Points: number;
+  currentSet: number;
+}
+
 export default function MatchScoringScreen({ route, navigation }: MatchScoringScreenProps) {
   const { matchId, isDoubles = false, player1Id, player2Id, player3Id, player4Id, team1Name, team2Name, tournamentId, tournamentMatchId } = route.params;
-  
+
   const team1 = { id: player1Id, name: team1Name };
   const team2 = { id: player2Id, name: team2Name };
-  
+
   const [team1Sets, setTeam1Sets] = useState(0);
   const [team2Sets, setTeam2Sets] = useState(0);
   const [team1Points, setTeam1Points] = useState(0);
@@ -45,6 +53,8 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [winner, setWinner] = useState<{ id: string; name: string } | null>(null);
   const [bestOf, setBestOf] = useState(3);
+  const [scoreHistory, setScoreHistory] = useState<ScoreSnapshot[]>([]);
+  const [completedSets, setCompletedSets] = useState<GameSet[]>([]);
 
   useEffect(() => {
     navigation.setOptions({
@@ -69,6 +79,28 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
         setCurrentSet(match.currentSet);
         setTeam1Sets(match.player1Sets);
         setTeam2Sets(match.player2Sets);
+
+        // Load all sets for this match
+        const sets = await databaseService.getMatchSets(matchId);
+
+        // Filter completed sets and sort by set number
+        const completed = sets
+          .filter(s => s.completedAt)
+          .sort((a, b) => a.setNumber - b.setNumber);
+        setCompletedSets(completed);
+
+        // Find current set in progress
+        const currentSetData = sets.find(s => s.setNumber === match.currentSet);
+
+        if (currentSetData && !currentSetData.completedAt) {
+          // Set is in progress, restore the score
+          setTeam1Points(currentSetData.player1Score);
+          setTeam2Points(currentSetData.player2Score);
+        } else {
+          // No in-progress set, start fresh
+          setTeam1Points(0);
+          setTeam2Points(0);
+        }
       }
     } catch (error) {
       console.error('Failed to load match details:', error);
@@ -93,6 +125,15 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
   const handleScorePoint = async (scoringTeam: 1 | 2) => {
     if (isMatchComplete) return;
 
+    // Save current state to history before making changes
+    setScoreHistory([...scoreHistory, {
+      team1Sets,
+      team2Sets,
+      team1Points,
+      team2Points,
+      currentSet,
+    }]);
+
     let newTeam1Points = team1Points;
     let newTeam2Points = team2Points;
     let newTeam1Sets = team1Sets;
@@ -105,21 +146,60 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
       newTeam2Points++;
     }
 
-    const isSetWon = (newTeam1Points >= 11 || newTeam2Points >= 11) && 
+    // Save or update the current set's in-progress score to the database
+    try {
+      const sets = await databaseService.getMatchSets(matchId);
+      const currentSetData = sets.find(s => s.setNumber === currentSet);
+
+      if (currentSetData && !currentSetData.completedAt) {
+        // Update existing in-progress set
+        await databaseService.updateGameSetScore(currentSetData.id, newTeam1Points, newTeam2Points);
+      } else if (!currentSetData) {
+        // Create new in-progress set
+        await databaseService.createInProgressGameSet(matchId, currentSet, newTeam1Points, newTeam2Points);
+      }
+    } catch (error) {
+      console.error('Failed to save in-progress set score:', error);
+    }
+
+    const isSetWon = (newTeam1Points >= 11 || newTeam2Points >= 11) &&
                      Math.abs(newTeam1Points - newTeam2Points) >= 2;
 
     if (isSetWon) {
       const setWinnerId = newTeam1Points > newTeam2Points ? team1.id : team2.id;
-      
-      // Save the completed set to database
+
+      // Complete the set in database
       try {
-        await databaseService.createGameSet(
-          matchId, 
-          currentSet, 
-          newTeam1Points, 
-          newTeam2Points, 
-          setWinnerId
-        );
+        const sets = await databaseService.getMatchSets(matchId);
+        const currentSetData = sets.find(s => s.setNumber === currentSet);
+
+        if (currentSetData && !currentSetData.completedAt) {
+          // Update existing in-progress set to completed
+          await databaseService.completeGameSet(currentSetData.id, setWinnerId);
+        } else {
+          // Create new completed set
+          await databaseService.createGameSet(
+            matchId,
+            currentSet,
+            newTeam1Points,
+            newTeam2Points,
+            setWinnerId
+          );
+        }
+
+        // Add the completed set to our state
+        const completedSet: GameSet = {
+          id: currentSetData?.id || Date.now().toString(),
+          matchId: matchId,
+          setNumber: currentSet,
+          player1Score: newTeam1Points,
+          player2Score: newTeam2Points,
+          winnerId: setWinnerId,
+          completedAt: new Date(),
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+        setCompletedSets([...completedSets, completedSet]);
       } catch (error) {
         console.error('Failed to save set score:', error);
       }
@@ -179,8 +259,77 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
     setCurrentSet(newCurrentSet);
   };
 
-  const handleUndoPoint = () => {
-    Alert.alert('Undo Point', 'Undo functionality coming soon!');
+  const handleUndoPoint = async () => {
+    if (isMatchComplete) {
+      Alert.alert('Cannot Undo', 'Match is already completed.');
+      return;
+    }
+
+    if (scoreHistory.length === 0) {
+      Alert.alert('Cannot Undo', 'No points to undo.');
+      return;
+    }
+
+    Alert.alert(
+      'Undo Last Point',
+      'Are you sure you want to undo the last point?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Undo',
+          onPress: async () => {
+            try {
+              // Get the last snapshot from history
+              const lastSnapshot = scoreHistory[scoreHistory.length - 1];
+
+              // Restore the previous state
+              setTeam1Sets(lastSnapshot.team1Sets);
+              setTeam2Sets(lastSnapshot.team2Sets);
+              setTeam1Points(lastSnapshot.team1Points);
+              setTeam2Points(lastSnapshot.team2Points);
+              setCurrentSet(lastSnapshot.currentSet);
+
+              // Remove the last snapshot from history
+              setScoreHistory(scoreHistory.slice(0, -1));
+
+              // Update the database to reflect the undo
+              await databaseService.updateMatchScore(
+                matchId,
+                lastSnapshot.team1Sets,
+                lastSnapshot.team2Sets,
+                lastSnapshot.currentSet
+              );
+
+              // Update or delete the current set in database
+              const sets = await databaseService.getMatchSets(matchId);
+              const currentSetData = sets.find(s => s.setNumber === lastSnapshot.currentSet);
+
+              if (currentSetData) {
+                if (lastSnapshot.team1Points === 0 && lastSnapshot.team2Points === 0) {
+                  // If we're back to 0-0, we should delete this set if it was just created
+                  // For now, just update it to 0-0
+                  await databaseService.updateGameSetScore(
+                    currentSetData.id,
+                    lastSnapshot.team1Points,
+                    lastSnapshot.team2Points
+                  );
+                } else {
+                  // Update the set score to the previous state
+                  await databaseService.updateGameSetScore(
+                    currentSetData.id,
+                    lastSnapshot.team1Points,
+                    lastSnapshot.team2Points
+                  );
+                }
+              }
+            } catch (error) {
+              console.error('Failed to undo point:', error);
+              Alert.alert('Error', 'Failed to undo point');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleCompleteMatch = async () => {
@@ -213,26 +362,30 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
   const renderScoreButton = (team: { id: string; name: string }, teamNumber: 1 | 2) => {
     const points = teamNumber === 1 ? team1Points : team2Points;
     const sets = teamNumber === 1 ? team1Sets : team2Sets;
-    
+
     return (
       <View style={styles.playerSection}>
         <View style={styles.playerHeader}>
           <Text style={styles.playerName}>{team.name}</Text>
-          {isDoubles && <Text style={styles.teamLabel}>Team {teamNumber}</Text>}
+          {isDoubles ? (
+            <Text style={styles.teamLabel}>Team {teamNumber}</Text>
+          ) : (
+            <Text style={styles.teamLabel}> </Text>
+          )}
         </View>
-        
+
         <View style={styles.scoreDisplay}>
           <View style={styles.setsScore}>
             <Text style={styles.setsLabel}>Sets</Text>
             <Text style={styles.setsValue}>{sets}</Text>
           </View>
-          
+
           <View style={styles.pointsScore}>
             <Text style={styles.pointsLabel}>Points</Text>
             <Text style={styles.pointsValue}>{points}</Text>
           </View>
         </View>
-        
+
         <TouchableOpacity
           style={[
             styles.scoreButton,
@@ -255,6 +408,43 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
         <Text style={styles.bestOfText}>Best of {bestOf} Sets</Text>
       </View>
 
+      {/* Set Scores Display */}
+      {(completedSets.length > 0 || currentSet > 1) && (
+        <View style={styles.setsHistoryContainer}>
+          <Text style={styles.setsHistoryTitle}>Set Scores</Text>
+          <View style={styles.setsHistoryGrid}>
+            {completedSets.map((set) => (
+              <View key={set.id} style={styles.setHistoryItem}>
+                <Text style={styles.setHistoryLabel}>Set {set.setNumber}</Text>
+                <Text style={[
+                  styles.setHistoryScore,
+                  set.player1Score > set.player2Score ? styles.winnerScore : styles.loserScore
+                ]}>
+                  {set.player1Score}
+                </Text>
+                <Text style={styles.setHistorySeparator}>-</Text>
+                <Text style={[
+                  styles.setHistoryScore,
+                  set.player2Score > set.player1Score ? styles.winnerScore : styles.loserScore
+                ]}>
+                  {set.player2Score}
+                </Text>
+              </View>
+            ))}
+            {/* Show current set in progress */}
+            {!isMatchComplete && (team1Points > 0 || team2Points > 0) && (
+              <View style={[styles.setHistoryItem, styles.currentSetItem]}>
+                <Text style={styles.setHistoryLabel}>Set {currentSet}</Text>
+                <Text style={styles.setHistoryScore}>{team1Points}</Text>
+                <Text style={styles.setHistorySeparator}>-</Text>
+                <Text style={styles.setHistoryScore}>{team2Points}</Text>
+                <Text style={styles.inProgressLabel}>(In Progress)</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
       <View style={styles.playersContainer}>
         {renderScoreButton(team1, 1)}
         
@@ -276,11 +466,29 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
       </View>
 
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.controlButton} onPress={handleUndoPoint}>
-          <Ionicons name="arrow-undo" size={24} color="#FF9800" />
-          <Text style={styles.controlButtonText}>Undo</Text>
+        <TouchableOpacity
+          style={[
+            styles.controlButton,
+            scoreHistory.length === 0 && styles.controlButtonDisabled
+          ]}
+          onPress={handleUndoPoint}
+          disabled={scoreHistory.length === 0 || isMatchComplete}
+        >
+          <Ionicons
+            name="arrow-undo"
+            size={24}
+            color={scoreHistory.length === 0 || isMatchComplete ? '#ccc' : '#FF9800'}
+          />
+          <Text
+            style={[
+              styles.controlButtonText,
+              (scoreHistory.length === 0 || isMatchComplete) && styles.controlButtonTextDisabled
+            ]}
+          >
+            Undo
+          </Text>
         </TouchableOpacity>
-        
+
         <TouchableOpacity style={styles.controlButton} onPress={handleBackPress}>
           <Ionicons name="pause" size={24} color="#666" />
           <Text style={styles.controlButtonText}>Pause</Text>
@@ -342,15 +550,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     padding: 20,
     justifyContent: 'space-around',
-    alignItems: 'center',
+    alignItems: 'stretch', // Changed from 'center' to 'stretch' to ensure equal height
   },
   playerSection: {
     flex: 1,
     alignItems: 'center',
+    justifyContent: 'space-between', // Added to distribute content evenly
   },
   playerHeader: {
     alignItems: 'center',
     marginBottom: 15,
+    minHeight: 45, // Fixed minimum height to ensure consistency
   },
   playerName: {
     fontSize: 18,
@@ -368,6 +578,7 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 2,
     textAlign: 'center',
+    minHeight: 16, // Ensures consistent height whether text is shown or not
   },
   scoreDisplay: {
     alignItems: 'center',
@@ -416,6 +627,7 @@ const styles = StyleSheet.create({
   vsSection: {
     alignItems: 'center',
     marginHorizontal: 20,
+    alignSelf: 'center', // Ensure VS section is centered vertically
   },
   vsText: {
     fontSize: 16,
@@ -467,10 +679,16 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  controlButtonDisabled: {
+    opacity: 0.5,
+  },
   controlButtonText: {
     marginTop: 5,
     fontSize: 12,
     color: '#666',
+  },
+  controlButtonTextDisabled: {
+    color: '#ccc',
   },
   modalOverlay: {
     flex: 1,
@@ -513,5 +731,72 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  setsHistoryContainer: {
+    backgroundColor: '#fff',
+    margin: 15,
+    padding: 15,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  setsHistoryTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  setsHistoryGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  setHistoryItem: {
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    minWidth: 80,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  currentSetItem: {
+    backgroundColor: '#e3f2fd',
+    borderWidth: 1,
+    borderColor: '#2196F3',
+  },
+  setHistoryLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginRight: 8,
+  },
+  setHistoryScore: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginHorizontal: 2,
+  },
+  setHistorySeparator: {
+    fontSize: 14,
+    color: '#666',
+    marginHorizontal: 4,
+  },
+  winnerScore: {
+    color: '#4CAF50',
+  },
+  loserScore: {
+    color: '#666',
+  },
+  inProgressLabel: {
+    fontSize: 10,
+    color: '#2196F3',
+    marginLeft: 8,
+    fontStyle: 'italic',
   },
 });

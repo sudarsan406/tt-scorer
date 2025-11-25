@@ -88,6 +88,45 @@ class DatabaseService {
       // Column might already exist, ignore error
     }
 
+    // Add isDoubles column to tournaments table
+    try {
+      await this.db.execAsync(`ALTER TABLE tournaments ADD COLUMN is_doubles BOOLEAN DEFAULT FALSE`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    // Add roundRobinRounds column to tournaments table
+    try {
+      await this.db.execAsync(`ALTER TABLE tournaments ADD COLUMN round_robin_rounds INTEGER DEFAULT 1`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    // Add doubles support columns to tournament_matches table
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player3_id TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player4_id TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN team1_name TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN team2_name TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS players (
         id TEXT PRIMARY KEY,
@@ -460,12 +499,50 @@ class DatabaseService {
     const now = new Date().toISOString();
 
     await this.db.runAsync(
-      `INSERT INTO game_sets (id, match_id, set_number, player1_score, player2_score, winner_id, completed_at, created_at, updated_at) 
+      `INSERT INTO game_sets (id, match_id, set_number, player1_score, player2_score, winner_id, completed_at, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, matchId, setNumber, player1Score, player2Score, winnerId, now, now, now]
     );
 
     return id;
+  }
+
+  async createInProgressGameSet(matchId: string, setNumber: number, player1Score: number, player2Score: number): Promise<string> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const id = this.generateId();
+    const now = new Date().toISOString();
+
+    // Create a set without a winner and without completed_at (in progress)
+    await this.db.runAsync(
+      `INSERT INTO game_sets (id, match_id, set_number, player1_score, player2_score, winner_id, completed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, matchId, setNumber, player1Score, player2Score, null, null, now, now]
+    );
+
+    return id;
+  }
+
+  async updateGameSetScore(setId: string, player1Score: number, player2Score: number): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const now = new Date().toISOString();
+
+    await this.db.runAsync(
+      `UPDATE game_sets SET player1_score = ?, player2_score = ?, updated_at = ? WHERE id = ?`,
+      [player1Score, player2Score, now, setId]
+    );
+  }
+
+  async completeGameSet(setId: string, winnerId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const now = new Date().toISOString();
+
+    await this.db.runAsync(
+      `UPDATE game_sets SET winner_id = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
+      [winnerId, now, now, setId]
+    );
   }
 
   async completeMatch(matchId: string, winnerId: string): Promise<void> {
@@ -549,13 +626,77 @@ class DatabaseService {
     const now = new Date().toISOString();
 
     await this.db.runAsync(
-      `INSERT INTO tournaments (id, name, description, start_date, end_date, status, format, best_of, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, tournament.name, tournament.description || null, tournament.startDate.toISOString(), 
-       tournament.endDate?.toISOString() || null, tournament.status, tournament.format, tournament.bestOf || 3, now, now]
+      `INSERT INTO tournaments (id, name, description, start_date, end_date, status, format, best_of, is_doubles, round_robin_rounds, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, tournament.name, tournament.description || null, tournament.startDate.toISOString(),
+       tournament.endDate?.toISOString() || null, tournament.status, tournament.format, tournament.bestOf || 3,
+       tournament.isDoubles || false, tournament.roundRobinRounds || 1, now, now]
     );
 
     return id;
+  }
+
+  async updateTournamentName(tournamentId: string, name: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const now = new Date().toISOString();
+
+    await this.db.runAsync(
+      `UPDATE tournaments SET name = ?, updated_at = ? WHERE id = ?`,
+      [name, now, tournamentId]
+    );
+  }
+
+  async deleteTournament(tournamentId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      // Delete in order to handle foreign key constraints
+      // 1. Delete tournament matches (bracket matches)
+      await this.db.runAsync(
+        `DELETE FROM tournament_matches WHERE tournament_id = ?`,
+        [tournamentId]
+      );
+
+      // 2. Delete tournament participants
+      await this.db.runAsync(
+        `DELETE FROM tournament_participants WHERE tournament_id = ?`,
+        [tournamentId]
+      );
+
+      // 3. Delete any regular matches associated with this tournament
+      // First, get all match IDs linked to this tournament
+      const tournamentMatches = await this.db.getAllAsync(
+        `SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND match_id IS NOT NULL`,
+        [tournamentId]
+      ) as { match_id: string }[];
+
+      // Delete game sets for these matches
+      for (const tm of tournamentMatches) {
+        if (tm.match_id) {
+          await this.db.runAsync(
+            `DELETE FROM game_sets WHERE match_id = ?`,
+            [tm.match_id]
+          );
+
+          // Delete the matches themselves
+          await this.db.runAsync(
+            `DELETE FROM matches WHERE id = ?`,
+            [tm.match_id]
+          );
+        }
+      }
+
+      // 4. Finally, delete the tournament itself
+      await this.db.runAsync(
+        `DELETE FROM tournaments WHERE id = ?`,
+        [tournamentId]
+      );
+
+    } catch (error) {
+      console.error('Failed to delete tournament:', error);
+      throw new Error('Failed to delete tournament and its associated data');
+    }
   }
 
   async addTournamentParticipants(tournamentId: string, players: Player[]): Promise<void> {
@@ -574,15 +715,30 @@ class DatabaseService {
     }
   }
 
-  async generateTournamentBracket(tournamentId: string, format: string, players: Player[]): Promise<void> {
+  async generateTournamentBracket(
+    tournamentId: string,
+    format: string,
+    players: Player[],
+    isDoubles: boolean = false,
+    doublesTeams?: Array<{ player1: Player; player2: Player; teamName?: string }>,
+    roundRobinRounds: number = 1
+  ): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
     let bracketMatches: BracketMatch[];
-    
+
     if (format === 'single_elimination') {
-      bracketMatches = BracketGenerator.generateSingleElimination(players);
+      if (isDoubles && doublesTeams) {
+        bracketMatches = BracketGenerator.generateSingleEliminationDoubles(doublesTeams);
+      } else {
+        bracketMatches = BracketGenerator.generateSingleElimination(players);
+      }
     } else if (format === 'round_robin') {
-      bracketMatches = BracketGenerator.generateRoundRobin(players);
+      if (isDoubles && doublesTeams) {
+        bracketMatches = BracketGenerator.generateRoundRobinDoubles(doublesTeams, roundRobinRounds);
+      } else {
+        bracketMatches = BracketGenerator.generateRoundRobin(players, roundRobinRounds);
+      }
     } else {
       throw new Error(`Unsupported tournament format: ${format}`);
     }
@@ -618,13 +774,16 @@ class DatabaseService {
       
       await this.db.runAsync(
         `INSERT INTO tournament_matches (
-          id, tournament_id, round_number, match_number, 
-          player1_id, player2_id, status, next_match_id, 
+          id, tournament_id, round_number, match_number,
+          player1_id, player2_id, player3_id, player4_id,
+          team1_name, team2_name, status, next_match_id,
           parent_match1_id, parent_match2_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           newId, tournamentId, bracketMatch.round, bracketMatch.matchNumber,
-          bracketMatch.player1Id || null, bracketMatch.player2Id || null, 
+          bracketMatch.player1Id || null, bracketMatch.player2Id || null,
+          bracketMatch.player3Id || null, bracketMatch.player4Id || null,
+          bracketMatch.team1Name || null, bracketMatch.team2Name || null,
           bracketMatch.status, newNextMatchId,
           newParentMatch1Id, newParentMatch2Id,
           now, now
@@ -657,10 +816,12 @@ class DatabaseService {
         status: row.status,
         format: row.format,
         bestOf: row.best_of || 3,
+        isDoubles: row.is_doubles || false,
+        roundRobinRounds: row.round_robin_rounds || 1,
         winnerId: row.winner_id,
         participants,
         matches,
-        matchStats, // Add the match statistics
+        matchStats,
         createdAt: new Date(row.created_at),
         updatedAt: new Date(row.updated_at),
       });
@@ -732,13 +893,17 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     const result = await this.db.getAllAsync(`
-      SELECT tm.*, 
+      SELECT tm.*,
              p1.name as player1_name,
              p2.name as player2_name,
+             p3.name as player3_name,
+             p4.name as player4_name,
              winner.name as winner_name
       FROM tournament_matches tm
       LEFT JOIN players p1 ON tm.player1_id = p1.id
       LEFT JOIN players p2 ON tm.player2_id = p2.id
+      LEFT JOIN players p3 ON tm.player3_id = p3.id
+      LEFT JOIN players p4 ON tm.player4_id = p4.id
       LEFT JOIN players winner ON tm.winner_id = winner.id
       WHERE tm.tournament_id = ?
       ORDER BY tm.round_number ASC, tm.match_number ASC
@@ -748,8 +913,14 @@ class DatabaseService {
       id: row.id,
       player1Id: row.player1_id,
       player2Id: row.player2_id,
+      player3Id: row.player3_id,
+      player4Id: row.player4_id,
       player1Name: row.player1_name,
       player2Name: row.player2_name,
+      player3Name: row.player3_name,
+      player4Name: row.player4_name,
+      team1Name: row.team1_name,
+      team2Name: row.team2_name,
       round: row.round_number,
       matchNumber: row.match_number,
       winnerId: row.winner_id,
@@ -767,7 +938,7 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     const now = new Date().toISOString();
-    
+
     // First try to add match score columns if they don't exist
     try {
       await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player1_sets INTEGER DEFAULT 0`);
@@ -775,11 +946,37 @@ class DatabaseService {
     } catch (error) {
       // Columns might already exist, ignore error
     }
-    
+
     await this.db.runAsync(
       `UPDATE tournament_matches SET status = ?, winner_id = ?, match_id = ?, player1_sets = ?, player2_sets = ?, updated_at = ? WHERE id = ?`,
       [status, winnerId || null, actualMatchId || null, player1Sets || 0, player2Sets || 0, now, tournamentMatchId]
     );
+
+    // Auto-update tournament status based on match statuses
+    // Get the tournament ID for this match
+    const tournamentMatch = await this.db.getFirstAsync(`
+      SELECT tournament_id FROM tournament_matches WHERE id = ?
+    `, [tournamentMatchId]) as { tournament_id: string } | null;
+
+    if (tournamentMatch) {
+      const tournamentId = tournamentMatch.tournament_id;
+
+      // Get current tournament status
+      const tournament = await this.db.getFirstAsync(`
+        SELECT status FROM tournaments WHERE id = ?
+      `, [tournamentId]) as { status: string } | null;
+
+      if (tournament) {
+        // If tournament is 'upcoming' and a match just started or completed, change to 'in_progress'
+        if (tournament.status === 'upcoming' && (status === 'in_progress' || status === 'completed')) {
+          await this.db.runAsync(
+            `UPDATE tournaments SET status = ?, updated_at = ? WHERE id = ?`,
+            ['in_progress', now, tournamentId]
+          );
+          console.log('Tournament status automatically updated to in_progress');
+        }
+      }
+    }
   }
 
   async advanceTournamentWinner(tournamentId: string, completedMatchId: string, winnerId: string): Promise<void> {
@@ -877,20 +1074,28 @@ class DatabaseService {
   async seedRoundRobinPlayoffs(tournamentId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Get tournament to check roundRobinRounds setting
+    const tournament = await this.db.getFirstAsync(`
+      SELECT round_robin_rounds FROM tournaments WHERE id = ?
+    `, [tournamentId]) as any;
+
+    const roundRobinRounds = tournament?.round_robin_rounds || 1;
+
     // Get all tournament matches and participants
     const bracketMatches = await this.getTournamentBracket(tournamentId);
     const participants = await this.getTournamentParticipants(tournamentId);
 
-    // Use bracket generator to seed playoffs
-    const updatedMatches = BracketGenerator.seedRoundRobinPlayoffs(bracketMatches, participants);
+    // Use bracket generator to seed playoffs with roundRobinRounds parameter
+    const updatedMatches = BracketGenerator.seedRoundRobinPlayoffs(bracketMatches, participants, roundRobinRounds);
 
     // Update database with seeded playoff matches
     const now = new Date().toISOString();
-    
+
     for (const match of updatedMatches) {
-      if (match.round > 1 && match.player1Id && match.player2Id) {
+      // Check if this is a playoff match (round > roundRobinRounds)
+      if (match.round > roundRobinRounds && match.player1Id && match.player2Id) {
         await this.db.runAsync(`
-          UPDATE tournament_matches 
+          UPDATE tournament_matches
           SET player1_id = ?, player2_id = ?, status = ?, updated_at = ?
           WHERE id = ? AND tournament_id = ?
         `, [match.player1Id, match.player2Id, match.status, now, match.id, tournamentId]);
@@ -1258,6 +1463,59 @@ class DatabaseService {
       return history;
     } catch (error) {
       console.error('Error fetching Elo history:', error);
+      return [];
+    }
+  }
+
+  async getPlayerMatches(playerId: string, limit: number = 5): Promise<any[]> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    try {
+      console.log('getPlayerMatches called for player:', playerId, 'with limit:', limit);
+
+      const matches = await this.db.getAllAsync(`
+        SELECT
+          m.id,
+          m.player1_id,
+          m.player2_id,
+          m.winner_id,
+          m.player1_sets,
+          m.player2_sets,
+          m.completed_at,
+          m.created_at,
+          p1.name as player1_name,
+          p2.name as player2_name
+        FROM matches m
+        JOIN players p1 ON m.player1_id = p1.id
+        JOIN players p2 ON m.player2_id = p2.id
+        WHERE (m.player1_id = ? OR m.player2_id = ?)
+          AND m.status = 'completed'
+          AND m.completed_at IS NOT NULL
+        ORDER BY m.completed_at DESC
+        LIMIT ?
+      `, [playerId, playerId, limit]);
+
+      console.log('Raw matches from database:', matches?.length || 0, 'matches found');
+
+      const transformedMatches = matches.map((match: any) => {
+        const isPlayer1 = match.player1_id === playerId;
+        // Always put the current player's score as player1Sets and opponent's as player2Sets
+        // This makes it consistent for display
+        return {
+          id: match.id,
+          winnerId: match.winner_id,
+          player1Sets: isPlayer1 ? (match.player1_sets || 0) : (match.player2_sets || 0),
+          player2Sets: isPlayer1 ? (match.player2_sets || 0) : (match.player1_sets || 0),
+          opponentName: isPlayer1 ? match.player2_name : match.player1_name,
+          completedAt: match.completed_at,
+          createdAt: match.created_at
+        };
+      });
+
+      console.log('Transformed matches:', transformedMatches);
+      return transformedMatches;
+    } catch (error) {
+      console.error('Error fetching player matches:', error);
       return [];
     }
   }

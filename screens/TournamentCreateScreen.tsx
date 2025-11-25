@@ -17,6 +17,12 @@ interface TournamentCreateScreenProps {
   navigation: any;
 }
 
+interface DoublesTeam {
+  player1: Player;
+  player2: Player;
+  teamName?: string;
+}
+
 export default function TournamentCreateScreen({ navigation }: TournamentCreateScreenProps) {
   const [tournamentName, setTournamentName] = useState('');
   const [description, setDescription] = useState('');
@@ -24,6 +30,9 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
   const [format, setFormat] = useState<'single_elimination' | 'round_robin'>('single_elimination');
   const [bestOf, setBestOf] = useState(3);
+  const [isDoubles, setIsDoubles] = useState(false);
+  const [doublesTeams, setDoublesTeams] = useState<DoublesTeam[]>([]);
+  const [roundRobinRounds, setRoundRobinRounds] = useState(1);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
@@ -51,22 +60,82 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
     }
   };
 
+  const handleCreateTeam = () => {
+    if (selectedPlayers.length !== 2) {
+      Alert.alert('Error', 'Please select exactly 2 players to form a team');
+      return;
+    }
+
+    // Check if any of the selected players are already in a team
+    const player1Id = selectedPlayers[0].id;
+    const player2Id = selectedPlayers[1].id;
+
+    const player1InTeam = doublesTeams.find(
+      team => team.player1.id === player1Id || team.player2.id === player1Id
+    );
+    const player2InTeam = doublesTeams.find(
+      team => team.player1.id === player2Id || team.player2.id === player2Id
+    );
+
+    if (player1InTeam) {
+      Alert.alert(
+        'Player Already in Team',
+        `${selectedPlayers[0].name} is already part of team "${player1InTeam.teamName}". Each player can only be in one team.`
+      );
+      return;
+    }
+
+    if (player2InTeam) {
+      Alert.alert(
+        'Player Already in Team',
+        `${selectedPlayers[1].name} is already part of team "${player2InTeam.teamName}". Each player can only be in one team.`
+      );
+      return;
+    }
+
+    const newTeam: DoublesTeam = {
+      player1: selectedPlayers[0],
+      player2: selectedPlayers[1],
+      teamName: `${selectedPlayers[0].name} / ${selectedPlayers[1].name}`,
+    };
+
+    setDoublesTeams([...doublesTeams, newTeam]);
+    setSelectedPlayers([]);
+  };
+
+  const handleRemoveTeam = (index: number) => {
+    setDoublesTeams(doublesTeams.filter((_, i) => i !== index));
+  };
+
   const validateTournament = () => {
     if (!tournamentName.trim()) {
       Alert.alert('Error', 'Tournament name is required');
       return false;
     }
-    
-    if (selectedPlayers.length < 4) {
-      Alert.alert('Error', 'At least 4 players are required for a tournament');
-      return false;
-    }
 
-    if (format === 'single_elimination') {
-      const validSizes = [4, 8, 16, 32];
-      if (!validSizes.includes(selectedPlayers.length)) {
-        Alert.alert('Error', 'Single elimination requires 4, 8, 16, or 32 players');
+    if (isDoubles) {
+      if (doublesTeams.length < 3) {
+        Alert.alert('Error', 'At least 3 teams are required for a doubles tournament');
         return false;
+      }
+      if (format === 'single_elimination') {
+        const validSizes = [4, 8, 16, 32];
+        if (!validSizes.includes(doublesTeams.length)) {
+          Alert.alert('Error', 'Single elimination requires 4, 8, 16, or 32 teams');
+          return false;
+        }
+      }
+    } else {
+      if (selectedPlayers.length < 3) {
+        Alert.alert('Error', 'At least 3 players are required for a tournament');
+        return false;
+      }
+      if (format === 'single_elimination') {
+        const validSizes = [4, 8, 16, 32];
+        if (!validSizes.includes(selectedPlayers.length)) {
+          Alert.alert('Error', 'Single elimination requires 4, 8, 16, or 32 players');
+          return false;
+        }
       }
     }
 
@@ -78,7 +147,6 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
 
     setCreating(true);
     try {
-      
       const tournamentId = await databaseService.createTournament({
         name: tournamentName.trim(),
         description: description.trim() || undefined,
@@ -87,10 +155,24 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
         status: 'upcoming',
         format,
         bestOf,
+        isDoubles,
+        roundRobinRounds,
       });
 
-      await databaseService.addTournamentParticipants(tournamentId, selectedPlayers);
-      await databaseService.generateTournamentBracket(tournamentId, format, selectedPlayers);
+      // Get all unique players from teams or selected players
+      const allPlayers = isDoubles
+        ? Array.from(new Set(doublesTeams.flatMap(t => [t.player1, t.player2])))
+        : selectedPlayers;
+
+      await databaseService.addTournamentParticipants(tournamentId, allPlayers);
+      await databaseService.generateTournamentBracket(
+        tournamentId,
+        format,
+        selectedPlayers,
+        isDoubles,
+        isDoubles ? doublesTeams : undefined,
+        roundRobinRounds
+      );
       
       
       Alert.alert(
@@ -111,23 +193,51 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
 
   const renderPlayer = (player: Player) => {
     const isSelected = selectedPlayers.find(p => p.id === player.id);
-    
+
+    // Check if player is already in a team (for doubles mode)
+    const playerTeam = isDoubles ? doublesTeams.find(
+      team => team.player1.id === player.id || team.player2.id === player.id
+    ) : null;
+
+    const isInTeam = !!playerTeam;
+
     return (
       <TouchableOpacity
         key={player.id}
-        style={[styles.playerCard, isSelected && styles.selectedPlayerCard]}
+        style={[
+          styles.playerCard,
+          isSelected && styles.selectedPlayerCard,
+          isInTeam && styles.playerInTeamCard
+        ]}
         onPress={() => handlePlayerToggle(player)}
+        disabled={isInTeam}
       >
         <View style={styles.playerInfo}>
-          <Text style={[styles.playerName, isSelected && styles.selectedPlayerName]}>
+          <Text style={[
+            styles.playerName,
+            isSelected && styles.selectedPlayerName,
+            isInTeam && styles.playerInTeamText
+          ]}>
             {player.name}
           </Text>
-          <Text style={[styles.playerRating, isSelected && styles.selectedPlayerRating]}>
+          <Text style={[
+            styles.playerRating,
+            isSelected && styles.selectedPlayerRating,
+            isInTeam && styles.playerInTeamText
+          ]}>
             Rating: {player.rating}
           </Text>
+          {isInTeam && playerTeam && (
+            <Text style={styles.teamAssignmentText}>
+              In team: {playerTeam.teamName}
+            </Text>
+          )}
         </View>
-        {isSelected && (
+        {isSelected && !isInTeam && (
           <Ionicons name="checkmark-circle" size={24} color="#2196F3" />
+        )}
+        {isInTeam && (
+          <Ionicons name="people" size={24} color="#999" />
         )}
       </TouchableOpacity>
     );
@@ -229,18 +339,109 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>
-          Select Players ({selectedPlayers.length} selected)
-        </Text>
+        <Text style={styles.sectionTitle}>Tournament Type</Text>
+        <TouchableOpacity
+          style={styles.doublesToggleContainer}
+          onPress={() => {
+            setIsDoubles(!isDoubles);
+            setSelectedPlayers([]);
+            setDoublesTeams([]);
+          }}
+        >
+          <View style={styles.doublesToggleInfo}>
+            <Text style={styles.doublesToggleText}>Doubles Tournament</Text>
+            <Text style={styles.doublesToggleDescription}>
+              {isDoubles ? 'Teams of 2 players' : 'Individual players'}
+            </Text>
+          </View>
+          <View style={[styles.toggleSwitch, isDoubles && styles.toggleSwitchActive]}>
+            <View style={[styles.toggleCircle, isDoubles && styles.toggleCircleActive]} />
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {format === 'round_robin' && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Round Robin Rounds</Text>
+          <Text style={styles.formatNote}>
+            Number of times each {isDoubles ? 'team' : 'player'} plays each other
+          </Text>
+          <View style={styles.roundsContainer}>
+            {[1, 2, 3].map((rounds) => (
+              <TouchableOpacity
+                key={rounds}
+                style={[styles.roundButton, roundRobinRounds === rounds && styles.roundButtonActive]}
+                onPress={() => setRoundRobinRounds(rounds)}
+              >
+                <Text style={[styles.roundButtonText, roundRobinRounds === rounds && styles.roundButtonTextActive]}>
+                  {rounds} {rounds === 1 ? 'Round' : 'Rounds'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {isDoubles ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Create Teams ({doublesTeams.length} teams formed)
+          </Text>
+          {format === 'single_elimination' && (
+            <Text style={styles.formatNote}>
+              Single elimination requires 4, 8, 16, or 32 teams
+            </Text>
+          )}
+
+          {/* Teams List */}
+          {doublesTeams.length > 0 && (
+            <View style={styles.teamsContainer}>
+              {doublesTeams.map((team, index) => (
+                <View key={index} style={styles.teamCard}>
+                  <View style={styles.teamInfo}>
+                    <Text style={styles.teamName}>{team.teamName}</Text>
+                    <Text style={styles.teamPlayers}>
+                      {team.player1.name} & {team.player2.name}
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={() => handleRemoveTeam(index)}>
+                    <Ionicons name="close-circle" size={24} color="#f44336" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Player Selection for Team Formation */}
+          <Text style={styles.subsectionTitle}>
+            Select 2 players to form a team ({selectedPlayers.length}/2 selected)
+          </Text>
+          <View style={styles.playersContainer}>
+            {players.map(renderPlayer)}
+          </View>
+
+          {selectedPlayers.length === 2 && (
+            <TouchableOpacity style={styles.createTeamButton} onPress={handleCreateTeam}>
+              <Ionicons name="add-circle" size={20} color="#fff" />
+              <Text style={styles.createTeamButtonText}>Create Team</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      ) : (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Select Players ({selectedPlayers.length} selected)
+          </Text>
         {format === 'single_elimination' && (
           <Text style={styles.formatNote}>
             Single elimination requires 4, 8, 16, or 32 players
           </Text>
         )}
-        <View style={styles.playersContainer}>
-          {players.map(renderPlayer)}
+          <View style={styles.playersContainer}>
+            {players.map(renderPlayer)}
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.summary}>
         <Text style={styles.summaryTitle}>Tournament Summary</Text>
@@ -255,12 +456,22 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
           </Text>
         </View>
         <View style={styles.summaryItem}>
+          <Text style={styles.summaryLabel}>Type:</Text>
+          <Text style={styles.summaryValue}>{isDoubles ? 'Doubles' : 'Singles'}</Text>
+        </View>
+        <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Match Format:</Text>
           <Text style={styles.summaryValue}>Best of {bestOf}</Text>
         </View>
+        {format === 'round_robin' && roundRobinRounds > 1 && (
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Rounds:</Text>
+            <Text style={styles.summaryValue}>{roundRobinRounds} round(s)</Text>
+          </View>
+        )}
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryLabel}>Players:</Text>
-          <Text style={styles.summaryValue}>{selectedPlayers.length}</Text>
+          <Text style={styles.summaryLabel}>{isDoubles ? 'Teams:' : 'Players:'}</Text>
+          <Text style={styles.summaryValue}>{isDoubles ? doublesTeams.length : selectedPlayers.length}</Text>
         </View>
       </View>
 
@@ -439,6 +650,11 @@ const styles = StyleSheet.create({
     borderColor: '#2196F3',
     backgroundColor: '#e3f2fd',
   },
+  playerInTeamCard: {
+    backgroundColor: '#f5f5f5',
+    borderColor: '#e0e0e0',
+    opacity: 0.7,
+  },
   playerInfo: {
     flex: 1,
   },
@@ -450,6 +666,9 @@ const styles = StyleSheet.create({
   selectedPlayerName: {
     color: '#2196F3',
   },
+  playerInTeamText: {
+    color: '#999',
+  },
   playerRating: {
     fontSize: 14,
     color: '#666',
@@ -457,6 +676,12 @@ const styles = StyleSheet.create({
   },
   selectedPlayerRating: {
     color: '#1976D2',
+  },
+  teamAssignmentText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
+    fontStyle: 'italic',
   },
   summary: {
     backgroundColor: '#fff',
@@ -506,5 +731,122 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 10,
+  },
+  doublesToggleContainer: {
+    backgroundColor: '#fff',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#ddd',
+  },
+  doublesToggleInfo: {
+    flex: 1,
+  },
+  doublesToggleText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  doublesToggleDescription: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  toggleSwitch: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#ccc',
+    padding: 2,
+    justifyContent: 'center',
+  },
+  toggleSwitchActive: {
+    backgroundColor: '#4CAF50',
+  },
+  toggleCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#fff',
+  },
+  toggleCircleActive: {
+    marginLeft: 22,
+  },
+  roundsContainer: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  roundButton: {
+    flex: 1,
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#ddd',
+  },
+  roundButtonActive: {
+    backgroundColor: '#FF9800',
+    borderColor: '#FF9800',
+  },
+  roundButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  roundButtonTextActive: {
+    color: '#fff',
+  },
+  subsectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#555',
+    marginTop: 15,
+    marginBottom: 10,
+  },
+  teamsContainer: {
+    gap: 10,
+    marginBottom: 15,
+  },
+  teamCard: {
+    backgroundColor: '#e8f5e9',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 15,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#4CAF50',
+  },
+  teamInfo: {
+    flex: 1,
+  },
+  teamName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#2e7d32',
+  },
+  teamPlayers: {
+    fontSize: 14,
+    color: '#558b2f',
+    marginTop: 2,
+  },
+  createTeamButton: {
+    backgroundColor: '#4CAF50',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  createTeamButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
   },
 });

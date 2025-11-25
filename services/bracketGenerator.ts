@@ -1,11 +1,24 @@
 import { Player, Match } from '../types/models';
 
+export interface DoublesTeam {
+  player1: Player;
+  player2: Player;
+  teamName?: string;
+}
+
 export interface BracketMatch {
   id: string;
   player1Id?: string;
   player2Id?: string;
   player1Name?: string;
   player2Name?: string;
+  // For doubles support
+  player3Id?: string; // Team 1 partner
+  player4Id?: string; // Team 2 partner
+  player3Name?: string;
+  player4Name?: string;
+  team1Name?: string; // Custom team name (optional)
+  team2Name?: string; // Custom team name (optional)
   round: number;
   matchNumber: number;
   winnerId?: string;
@@ -21,32 +34,33 @@ export interface BracketMatch {
 export class BracketGenerator {
   
   /**
-   * Generate Single Elimination bracket
+   * Generate Single Elimination bracket for singles
    */
   static generateSingleElimination(players: Player[]): BracketMatch[] {
     const playerCount = players.length;
     const validSizes = [4, 8, 16, 32];
-    
+
     if (!validSizes.includes(playerCount)) {
       throw new Error(`Single elimination requires ${validSizes.join(', ')} players`);
     }
 
-    // Shuffle players for random seeding (or could implement rating-based seeding)
+    // Shuffle players for random seeding
     const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
     
     const matches: BracketMatch[] = [];
     const totalMatches = playerCount - 1; // Always n-1 matches in single elimination
     let currentMatchId = 1;
-    
+    let globalMatchNumber = 1; // Global match number counter
+
     // Calculate number of rounds
     const rounds = Math.log2(playerCount);
-    
+
     // Generate first round matches
     const firstRoundMatches = playerCount / 2;
     for (let i = 0; i < firstRoundMatches; i++) {
       const player1 = shuffledPlayers[i * 2];
       const player2 = shuffledPlayers[i * 2 + 1];
-      
+
       matches.push({
         id: `match_${currentMatchId}`,
         player1Id: player1.id,
@@ -54,25 +68,27 @@ export class BracketGenerator {
         player1Name: player1.name,
         player2Name: player2.name,
         round: 1,
-        matchNumber: i + 1,
+        matchNumber: globalMatchNumber++, // Use global counter
         status: 'scheduled',
       });
       currentMatchId++;
     }
-    
+
     // Generate subsequent rounds
     let previousRoundMatches = firstRoundMatches;
     for (let round = 2; round <= rounds; round++) {
       const currentRoundMatches = previousRoundMatches / 2;
-      
+
       for (let i = 0; i < currentRoundMatches; i++) {
-        const parentMatch1 = matches.find(m => m.round === round - 1 && m.matchNumber === i * 2 + 1);
-        const parentMatch2 = matches.find(m => m.round === round - 1 && m.matchNumber === i * 2 + 2);
-        
+        // Find parent matches by looking for the correct indices within the round
+        const roundMatches = matches.filter(m => m.round === round - 1);
+        const parentMatch1 = roundMatches[i * 2];
+        const parentMatch2 = roundMatches[i * 2 + 1];
+
         const match: BracketMatch = {
           id: `match_${currentMatchId}`,
           round,
-          matchNumber: i + 1,
+          matchNumber: globalMatchNumber++, // Use global counter
           status: 'scheduled',
           parentMatch1Id: parentMatch1?.id,
           parentMatch2Id: parentMatch2?.id,
@@ -94,44 +110,127 @@ export class BracketGenerator {
   }
 
   /**
-   * Generate Round Robin schedule with playoffs
+   * Generate Single Elimination bracket for doubles
    */
-  static generateRoundRobin(players: Player[]): BracketMatch[] {
+  static generateSingleEliminationDoubles(teams: DoublesTeam[]): BracketMatch[] {
+    const teamCount = teams.length;
+    const validSizes = [4, 8, 16, 32];
+
+    if (!validSizes.includes(teamCount)) {
+      throw new Error(`Single elimination requires ${validSizes.join(', ')} teams`);
+    }
+
+    // Shuffle teams for random seeding
+    const shuffledTeams = [...teams].sort(() => Math.random() - 0.5);
+
+    const matches: BracketMatch[] = [];
+    let currentMatchId = 1;
+
+    // Calculate number of rounds
+    const rounds = Math.log2(teamCount);
+
+    // Generate first round matches
+    const firstRoundMatches = teamCount / 2;
+    for (let i = 0; i < firstRoundMatches; i++) {
+      const team1 = shuffledTeams[i * 2];
+      const team2 = shuffledTeams[i * 2 + 1];
+
+      matches.push({
+        id: `match_${currentMatchId}`,
+        player1Id: team1.player1.id,
+        player2Id: team2.player1.id,
+        player3Id: team1.player2.id,
+        player4Id: team2.player2.id,
+        player1Name: team1.player1.name,
+        player2Name: team2.player1.name,
+        player3Name: team1.player2.name,
+        player4Name: team2.player2.name,
+        team1Name: team1.teamName || `${team1.player1.name} / ${team1.player2.name}`,
+        team2Name: team2.teamName || `${team2.player1.name} / ${team2.player2.name}`,
+        round: 1,
+        matchNumber: i + 1,
+        status: 'scheduled',
+      });
+      currentMatchId++;
+    }
+
+    // Generate subsequent rounds (same structure as singles, just tracking teams)
+    let previousRoundMatches = firstRoundMatches;
+    for (let round = 2; round <= rounds; round++) {
+      const currentRoundMatches = previousRoundMatches / 2;
+
+      for (let i = 0; i < currentRoundMatches; i++) {
+        const parentMatch1 = matches.find(m => m.round === round - 1 && m.matchNumber === i * 2 + 1);
+        const parentMatch2 = matches.find(m => m.round === round - 1 && m.matchNumber === i * 2 + 2);
+
+        const match: BracketMatch = {
+          id: `match_${currentMatchId}`,
+          round,
+          matchNumber: i + 1,
+          status: 'scheduled',
+          parentMatch1Id: parentMatch1?.id,
+          parentMatch2Id: parentMatch2?.id,
+        };
+
+        matches.push(match);
+
+        // Set next match reference in parent matches
+        if (parentMatch1) parentMatch1.nextMatchId = match.id;
+        if (parentMatch2) parentMatch2.nextMatchId = match.id;
+
+        currentMatchId++;
+      }
+
+      previousRoundMatches = currentRoundMatches;
+    }
+
+    return matches;
+  }
+
+  /**
+   * Generate Round Robin schedule with playoffs (supports multiple rounds)
+   */
+  static generateRoundRobin(players: Player[], rounds: number = 1): BracketMatch[] {
     const playerCount = players.length;
-    
+
     if (playerCount < 3) {
       throw new Error('Round robin requires at least 3 players');
     }
 
     const matches: BracketMatch[] = [];
     let currentMatchId = 1;
-    
-    // Generate all possible pairings for round robin
-    for (let i = 0; i < playerCount; i++) {
-      for (let j = i + 1; j < playerCount; j++) {
-        const player1 = players[i];
-        const player2 = players[j];
-        
-        matches.push({
-          id: `match_${currentMatchId}`,
-          player1Id: player1.id,
-          player2Id: player2.id,
-          player1Name: player1.name,
-          player2Name: player2.name,
-          round: 1, // Round robin group stage
-          matchNumber: currentMatchId,
-          status: 'scheduled',
-        });
-        currentMatchId++;
+
+    // Generate all possible pairings for round robin, repeated for each round
+    for (let roundNum = 1; roundNum <= rounds; roundNum++) {
+      for (let i = 0; i < playerCount; i++) {
+        for (let j = i + 1; j < playerCount; j++) {
+          const player1 = players[i];
+          const player2 = players[j];
+
+          matches.push({
+            id: `match_${currentMatchId}`,
+            player1Id: player1.id,
+            player2Id: player2.id,
+            player1Name: player1.name,
+            player2Name: player2.name,
+            round: roundNum, // Round robin group stage (can be multiple rounds now)
+            matchNumber: currentMatchId,
+            status: 'scheduled',
+          });
+          currentMatchId++;
+        }
       }
     }
     
     // Add playoff matches based on player count
+    // Playoffs start after all group stage rounds
+    const playoffRoundStart = rounds + 1;
+
     if (playerCount === 4) {
       // For 4 players: Top 2 go directly to final
       const final: BracketMatch = {
         id: `match_${currentMatchId}`,
-        round: 2,
+        round: playoffRoundStart,
         matchNumber: 1,
         status: 'scheduled',
         parentMatch1Id: 'group_stage', // Special marker for group completion
@@ -143,7 +242,7 @@ export class BracketGenerator {
       // Semifinal 1: 1st vs 4th
       const semi1: BracketMatch = {
         id: `match_${currentMatchId}`,
-        round: 2,
+        round: playoffRoundStart,
         matchNumber: 1,
         status: 'scheduled',
         parentMatch1Id: 'group_stage',
@@ -151,11 +250,11 @@ export class BracketGenerator {
       };
       matches.push(semi1);
       currentMatchId++;
-      
+
       // Semifinal 2: 2nd vs 3rd
       const semi2: BracketMatch = {
         id: `match_${currentMatchId}`,
-        round: 2,
+        round: playoffRoundStart,
         matchNumber: 2,
         status: 'scheduled',
         parentMatch1Id: 'group_stage',
@@ -163,18 +262,18 @@ export class BracketGenerator {
       };
       matches.push(semi2);
       currentMatchId++;
-      
+
       // Final: Winner of semi1 vs Winner of semi2
       const final: BracketMatch = {
         id: `match_${currentMatchId}`,
-        round: 3,
+        round: playoffRoundStart + 1,
         matchNumber: 1,
         status: 'scheduled',
         parentMatch1Id: semi1.id,
         parentMatch2Id: semi2.id,
       };
       matches.push(final);
-      
+
       // Set next match references
       semi1.nextMatchId = final.id;
       semi2.nextMatchId = final.id;
@@ -184,41 +283,158 @@ export class BracketGenerator {
   }
 
   /**
-   * Advance winner to next match in single elimination
+   * Generate Round Robin schedule for doubles with playoffs
+   */
+  static generateRoundRobinDoubles(teams: DoublesTeam[], rounds: number = 1): BracketMatch[] {
+    const teamCount = teams.length;
+
+    if (teamCount < 3) {
+      throw new Error('Round robin requires at least 3 teams');
+    }
+
+    const matches: BracketMatch[] = [];
+    let currentMatchId = 1;
+
+    // Generate all possible team pairings for round robin, repeated for each round
+    for (let roundNum = 1; roundNum <= rounds; roundNum++) {
+      for (let i = 0; i < teamCount; i++) {
+        for (let j = i + 1; j < teamCount; j++) {
+          const team1 = teams[i];
+          const team2 = teams[j];
+
+          matches.push({
+            id: `match_${currentMatchId}`,
+            player1Id: team1.player1.id,
+            player2Id: team2.player1.id,
+            player3Id: team1.player2.id,
+            player4Id: team2.player2.id,
+            player1Name: team1.player1.name,
+            player2Name: team2.player1.name,
+            player3Name: team1.player2.name,
+            player4Name: team2.player2.name,
+            team1Name: team1.teamName || `${team1.player1.name} / ${team1.player2.name}`,
+            team2Name: team2.teamName || `${team2.player1.name} / ${team2.player2.name}`,
+            round: roundNum,
+            matchNumber: currentMatchId,
+            status: 'scheduled',
+          });
+          currentMatchId++;
+        }
+      }
+    }
+
+    // Add playoff matches based on team count
+    const playoffRoundStart = rounds + 1;
+
+    if (teamCount === 4) {
+      // For 4 teams: Top 2 go directly to final
+      const final: BracketMatch = {
+        id: `match_${currentMatchId}`,
+        round: playoffRoundStart,
+        matchNumber: 1,
+        status: 'scheduled',
+        parentMatch1Id: 'group_stage',
+        parentMatch2Id: 'group_stage',
+      };
+      matches.push(final);
+    } else if (teamCount >= 6) {
+      // For 6+ teams: Top 4 go to semifinals, then final
+      const semi1: BracketMatch = {
+        id: `match_${currentMatchId}`,
+        round: playoffRoundStart,
+        matchNumber: 1,
+        status: 'scheduled',
+        parentMatch1Id: 'group_stage',
+        parentMatch2Id: 'group_stage',
+      };
+      matches.push(semi1);
+      currentMatchId++;
+
+      const semi2: BracketMatch = {
+        id: `match_${currentMatchId}`,
+        round: playoffRoundStart,
+        matchNumber: 2,
+        status: 'scheduled',
+        parentMatch1Id: 'group_stage',
+        parentMatch2Id: 'group_stage',
+      };
+      matches.push(semi2);
+      currentMatchId++;
+
+      const final: BracketMatch = {
+        id: `match_${currentMatchId}`,
+        round: playoffRoundStart + 1,
+        matchNumber: 1,
+        status: 'scheduled',
+        parentMatch1Id: semi1.id,
+        parentMatch2Id: semi2.id,
+      };
+      matches.push(final);
+
+      semi1.nextMatchId = final.id;
+      semi2.nextMatchId = final.id;
+    }
+
+    return matches;
+  }
+
+  /**
+   * Advance winner to next match in single elimination (supports singles and doubles)
    */
   static advanceWinner(matches: BracketMatch[], completedMatchId: string, winnerId: string): BracketMatch[] {
     const updatedMatches = [...matches];
     const completedMatch = updatedMatches.find(m => m.id === completedMatchId);
-    
+
     if (!completedMatch) return matches;
-    
+
     // Mark match as completed
     completedMatch.status = 'completed';
     completedMatch.winnerId = winnerId;
-    
+
     // Find next match and advance winner
     if (completedMatch.nextMatchId) {
       const nextMatch = updatedMatches.find(m => m.id === completedMatch.nextMatchId);
-      
+
       if (nextMatch) {
-        // Determine if winner goes to player1 or player2 slot
+        // Check if this is a doubles match
+        const isDoubles = !!(completedMatch.player3Id && completedMatch.player4Id);
+
+        // Determine if winner goes to player1/team1 or player2/team2 slot
         if (nextMatch.parentMatch1Id === completedMatchId) {
           nextMatch.player1Id = winnerId;
-          nextMatch.player1Name = completedMatch.winnerId === completedMatch.player1Id ? 
-            completedMatch.player1Name : completedMatch.player2Name;
+          const isTeam1Winner = winnerId === completedMatch.player1Id;
+          nextMatch.player1Name = isTeam1Winner ? completedMatch.player1Name : completedMatch.player2Name;
+
+          if (isDoubles) {
+            // For doubles, also copy partner and team name
+            nextMatch.player3Id = isTeam1Winner ? completedMatch.player3Id : completedMatch.player4Id;
+            nextMatch.player3Name = isTeam1Winner ? completedMatch.player3Name : completedMatch.player4Name;
+            nextMatch.team1Name = isTeam1Winner ? completedMatch.team1Name : completedMatch.team2Name;
+          }
         } else if (nextMatch.parentMatch2Id === completedMatchId) {
           nextMatch.player2Id = winnerId;
-          nextMatch.player2Name = completedMatch.winnerId === completedMatch.player1Id ? 
-            completedMatch.player1Name : completedMatch.player2Name;
+          const isTeam1Winner = winnerId === completedMatch.player1Id;
+          nextMatch.player2Name = isTeam1Winner ? completedMatch.player1Name : completedMatch.player2Name;
+
+          if (isDoubles) {
+            // For doubles, also copy partner and team name
+            nextMatch.player4Id = isTeam1Winner ? completedMatch.player3Id : completedMatch.player4Id;
+            nextMatch.player4Name = isTeam1Winner ? completedMatch.player3Name : completedMatch.player4Name;
+            nextMatch.team2Name = isTeam1Winner ? completedMatch.team1Name : completedMatch.team2Name;
+          }
         }
-        
-        // If both players are set, match is ready to play
-        if (nextMatch.player1Id && nextMatch.player2Id) {
+
+        // Check if match is ready (both sides filled)
+        const isNextMatchReady = isDoubles
+          ? (nextMatch.player1Id && nextMatch.player2Id && nextMatch.player3Id && nextMatch.player4Id)
+          : (nextMatch.player1Id && nextMatch.player2Id);
+
+        if (isNextMatchReady) {
           nextMatch.status = 'scheduled';
         }
       }
     }
-    
+
     return updatedMatches;
   }
 
@@ -258,9 +474,9 @@ export class BracketGenerator {
   }
 
   /**
-   * Get round robin standings with match wins and set difference
+   * Get round robin standings with match wins and set difference (supports multiple rounds)
    */
-  static getRoundRobinStandings(matches: BracketMatch[], players: Player[]): Array<{
+  static getRoundRobinStandings(matches: BracketMatch[], players: Player[], roundRobinRounds: number = 1): Array<{
     player: Player;
     matchWins: number;
     matchLosses: number;
@@ -279,7 +495,8 @@ export class BracketGenerator {
       winPercentage: 0,
     }));
 
-    matches.filter(m => m.status === 'completed' && m.round === 1).forEach(match => {
+    // Filter for group stage matches only (rounds 1 through roundRobinRounds, excluding playoffs)
+    matches.filter(m => m.status === 'completed' && m.round >= 1 && m.round <= roundRobinRounds).forEach(match => {
       const player1Standing = standings.find(s => s.player.id === match.player1Id);
       const player2Standing = standings.find(s => s.player.id === match.player2Id);
       
@@ -320,23 +537,26 @@ export class BracketGenerator {
   }
 
   /**
-   * Check if round robin group stage is complete and seed playoffs
+   * Check if round robin group stage is complete and seed playoffs (supports multiple rounds)
    */
-  static seedRoundRobinPlayoffs(matches: BracketMatch[], players: Player[]): BracketMatch[] {
+  static seedRoundRobinPlayoffs(matches: BracketMatch[], players: Player[], roundRobinRounds: number = 1): BracketMatch[] {
     const updatedMatches = [...matches];
-    
-    // Check if all group stage matches (round 1) are complete
-    const groupMatches = matches.filter(m => m.round === 1);
+
+    // Check if all group stage matches (rounds 1 through roundRobinRounds) are complete
+    const groupMatches = matches.filter(m => m.round >= 1 && m.round <= roundRobinRounds);
     const completedGroupMatches = groupMatches.filter(m => m.status === 'completed');
-    
+
     if (completedGroupMatches.length === groupMatches.length && players.length >= 4) {
       // Get final standings
-      const standings = this.getRoundRobinStandings(matches, players);
-      
+      const standings = this.getRoundRobinStandings(matches, players, roundRobinRounds);
+
+      // Playoff rounds start after group stage rounds
+      const playoffRoundStart = roundRobinRounds + 1;
+
       if (players.length === 4) {
         // For 4 players: Top 2 go directly to final
-        const final = updatedMatches.find(m => m.round === 2 && m.matchNumber === 1);
-        
+        const final = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 1);
+
         if (final && standings.length >= 2) {
           final.player1Id = standings[0].player.id;
           final.player1Name = standings[0].player.name;
@@ -346,9 +566,9 @@ export class BracketGenerator {
         }
       } else {
         // For 6+ players: Seed semifinals
-        const semi1 = updatedMatches.find(m => m.round === 2 && m.matchNumber === 1);
-        const semi2 = updatedMatches.find(m => m.round === 2 && m.matchNumber === 2);
-        
+        const semi1 = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 1);
+        const semi2 = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 2);
+
         if (semi1 && semi2 && standings.length >= 4) {
           // Semi 1: 1st vs 4th
           semi1.player1Id = standings[0].player.id;
@@ -356,7 +576,7 @@ export class BracketGenerator {
           semi1.player2Id = standings[3].player.id;
           semi1.player2Name = standings[3].player.name;
           semi1.status = 'scheduled';
-          
+
           // Semi 2: 2nd vs 3rd
           semi2.player1Id = standings[1].player.id;
           semi2.player1Name = standings[1].player.name;
@@ -366,7 +586,7 @@ export class BracketGenerator {
         }
       }
     }
-    
+
     return updatedMatches;
   }
 }

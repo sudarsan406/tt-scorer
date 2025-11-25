@@ -28,6 +28,8 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
   const [winLossTrends, setWinLossTrends] = useState<Array<{ label: string; wins: number; losses: number; winPercentage: number }>>([]);
   const [chartLoading, setChartLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [expandedPlayers, setExpandedPlayers] = useState<Set<string>>(new Set());
+  const [playerMatches, setPlayerMatches] = useState<{ [playerId: string]: any[] }>({});
 
   useEffect(() => {
     loadStatistics();
@@ -92,6 +94,43 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
   const handlePlayerSelect = (playerId: string) => {
     setSelectedPlayerForCharts(playerId);
     loadPlayerCharts(playerId);
+  };
+
+  const togglePlayerExpansion = async (playerId: string) => {
+    const newExpanded = new Set(expandedPlayers);
+
+    if (newExpanded.has(playerId)) {
+      newExpanded.delete(playerId);
+      // Clear selected player when collapsing
+      if (selectedPlayerForCharts === playerId) {
+        setSelectedPlayerForCharts(null);
+      }
+    } else {
+      newExpanded.add(playerId);
+
+      // Set this player as selected for charts
+      setSelectedPlayerForCharts(playerId);
+
+      // Load charts data for this player
+      loadPlayerCharts(playerId);
+
+      // Load player matches if not already loaded
+      if (!playerMatches[playerId]) {
+        try {
+          console.log('Loading matches for player:', playerId);
+          const matches = await databaseService.getPlayerMatches(playerId, 5);
+          console.log('Loaded matches:', matches);
+          setPlayerMatches(prev => ({
+            ...prev,
+            [playerId]: matches
+          }));
+        } catch (error) {
+          console.error('Failed to load player matches:', error);
+        }
+      }
+    }
+
+    setExpandedPlayers(newExpanded);
   };
 
   const handleExport = async () => {
@@ -164,31 +203,161 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
       return null;
     }
 
-    const isSelected = selectedPlayerForCharts === playerStats.player.id;
+    const isExpanded = expandedPlayers.has(playerStats.player.id);
+    const matches = playerMatches[playerStats.player.id] || [];
 
     return (
-      <TouchableOpacity
-        key={playerStats.player.id}
-        style={[styles.rankingCard, isSelected && styles.rankingCardSelected]}
-        onPress={() => handlePlayerSelect(playerStats.player!.id)}
-      >
-      <View style={styles.rankingPosition}>
-        <Text style={styles.rankingNumber}>#{index + 1}</Text>
+      <View key={playerStats.player.id} style={styles.playerCard}>
+        <TouchableOpacity
+          style={styles.playerCardHeader}
+          onPress={() => togglePlayerExpansion(playerStats.player.id)}
+        >
+          <View style={styles.rankBadge}>
+            <Text style={styles.rankText}>{index + 1}</Text>
+          </View>
+
+          <View style={styles.playerMainInfo}>
+            <Text style={styles.playerName}>{playerStats.player.name}</Text>
+            <View style={styles.compactStatsRow}>
+              <View style={styles.compactStatItem}>
+                <Text style={styles.compactStatValue}>{playerStats.wins}-{playerStats.losses}</Text>
+                <Text style={styles.compactStatLabel}>W-L</Text>
+              </View>
+              <View style={styles.compactStatDivider} />
+              <View style={styles.compactStatItem}>
+                <Text style={[styles.compactStatValue, { color: '#4CAF50' }]}>{playerStats.winPercentage}%</Text>
+                <Text style={styles.compactStatLabel}>Win</Text>
+              </View>
+              <View style={styles.compactStatDivider} />
+              <View style={styles.compactStatItem}>
+                <Text style={styles.compactStatValue}>{playerStats.totalMatches || 0}</Text>
+                <Text style={styles.compactStatLabel}>Games</Text>
+              </View>
+              <View style={styles.compactStatDivider} />
+              <View style={styles.compactStatItem}>
+                <Text style={[styles.compactStatValue, { color: '#2196F3' }]}>{Math.round(playerStats.eloRating || 1200)}</Text>
+                <Text style={styles.compactStatLabel}>Rating</Text>
+              </View>
+            </View>
+          </View>
+
+          <Ionicons
+            name={isExpanded ? "chevron-up" : "chevron-down"}
+            size={20}
+            color="#666"
+            style={styles.expandIcon}
+          />
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={styles.expandedContent}>
+            <View style={styles.expandedSection}>
+              <Text style={styles.expandedSectionTitle}>Recent Matches</Text>
+              {matches.length > 0 ? (
+                matches.map((match: any, idx: number) => (
+                  <View key={match.id || idx} style={styles.matchHistoryItem}>
+                    <View style={[
+                      styles.matchResultIndicator,
+                      { backgroundColor: match.winnerId === playerStats.player?.id ? '#4CAF50' : '#f44336' }
+                    ]} />
+                    <View style={styles.matchHistoryDetails}>
+                      <Text style={styles.matchOpponent}>
+                        vs {match.opponentName || 'Unknown'}
+                      </Text>
+                      <Text style={styles.matchScore}>
+                        {match.player1Sets || 0} - {match.player2Sets || 0}
+                      </Text>
+                    </View>
+                    <Text style={styles.matchDate}>
+                      {new Date(match.completedAt || match.createdAt).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noMatchesText}>No recent matches</Text>
+              )}
+            </View>
+
+            {/* Analytics Charts - Now integrated directly in player card */}
+            {selectedPlayerForCharts === playerStats.player.id && (
+              <View style={styles.chartsInCard}>
+                {chartLoading ? (
+                  <View style={styles.chartLoadingInline}>
+                    <ActivityIndicator size="small" color="#2196F3" />
+                    <Text style={styles.loadingTextInline}>Loading analytics...</Text>
+                  </View>
+                ) : (
+                  <>
+                    {eloHistory.length > 0 && (
+                      <View style={styles.chartContainerInline}>
+                        <Text style={styles.chartTitleInline}>Rating Trend</Text>
+                        <LineChart
+                          data={{
+                            labels: eloHistory.map((_, idx) => idx % 3 === 0 ? `M${idx + 1}` : ''),
+                            datasets: [{
+                              data: eloHistory.map(h => h.rating),
+                              color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
+                              strokeWidth: 2
+                            }]
+                          }}
+                          width={screenWidth - 80}
+                          height={180}
+                          chartConfig={{
+                            backgroundColor: '#ffffff',
+                            backgroundGradientFrom: '#ffffff',
+                            backgroundGradientTo: '#ffffff',
+                            decimalPlaces: 0,
+                            color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
+                            labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                            style: { borderRadius: 8 },
+                            propsForDots: {
+                              r: '3',
+                              strokeWidth: '1',
+                              stroke: '#2196F3',
+                              fill: '#2196F3'
+                            }
+                          }}
+                          bezier
+                          style={styles.chartInline}
+                        />
+                      </View>
+                    )}
+
+                    {winLossTrends.length > 0 && (
+                      <View style={styles.chartContainerInline}>
+                        <Text style={styles.chartTitleInline}>Win Rate Trend</Text>
+                        <BarChart
+                          data={{
+                            labels: winLossTrends.slice(-4).map(t => t.label.split(' ')[0]),
+                            datasets: [{
+                              data: winLossTrends.slice(-4).map(t => t.winPercentage)
+                            }]
+                          }}
+                          width={screenWidth - 80}
+                          height={180}
+                          yAxisLabel=""
+                          yAxisSuffix="%"
+                          chartConfig={{
+                            backgroundColor: '#ffffff',
+                            backgroundGradientFrom: '#ffffff',
+                            backgroundGradientTo: '#ffffff',
+                            decimalPlaces: 0,
+                            color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
+                            labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                            style: { borderRadius: 8 }
+                          }}
+                          style={styles.chartInline}
+                          fromZero
+                        />
+                      </View>
+                    )}
+                  </>
+                )}
+              </View>
+            )}
+          </View>
+        )}
       </View>
-      <View style={styles.playerInfo}>
-        <Text style={styles.playerName}>{playerStats.player.name}</Text>
-        <Text style={styles.playerRecord}>
-          {playerStats.wins}W - {playerStats.losses}L ({playerStats.winPercentage}%)
-        </Text>
-      </View>
-      <View style={styles.playerStats}>
-        <Text style={styles.statValue}>{playerStats.winPercentage}%</Text>
-        <Text style={styles.statSubtext}>Win Rate</Text>
-      </View>
-      {isSelected && (
-        <Ionicons name="checkmark-circle" size={24} color="#2196F3" style={styles.checkmark} />
-      )}
-    </TouchableOpacity>
     );
   };
 
@@ -271,128 +440,6 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
           </View>
         )}
       </View>
-
-      {selectedPlayerForCharts && playerRankings.length > 0 && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Analytics: {playerRankings.find(p => p.player?.id === selectedPlayerForCharts)?.player?.name || 'Player'}
-          </Text>
-
-          {chartLoading ? (
-            <View style={styles.chartLoadingContainer}>
-              <ActivityIndicator size="large" color="#2196F3" />
-              <Text style={styles.loadingText}>Loading charts...</Text>
-            </View>
-          ) : (
-            <>
-              {eloHistory.length > 0 && (
-                <View style={styles.chartContainer}>
-                  <Text style={styles.chartTitle}>Elo Rating Progression</Text>
-                  <Text style={styles.chartSubtitle}>Last {eloHistory.length} matches</Text>
-                  <LineChart
-                    data={{
-                      labels: eloHistory.map((_, idx) => idx % 3 === 0 ? `M${idx + 1}` : ''),
-                      datasets: [{
-                        data: eloHistory.map(h => h.rating),
-                        color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
-                        strokeWidth: 3
-                      }]
-                    }}
-                    width={screenWidth - 60}
-                    height={220}
-                    chartConfig={{
-                      backgroundColor: '#ffffff',
-                      backgroundGradientFrom: '#ffffff',
-                      backgroundGradientTo: '#ffffff',
-                      decimalPlaces: 0,
-                      color: (opacity = 1) => `rgba(33, 150, 243, ${opacity})`,
-                      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                      style: {
-                        borderRadius: 16
-                      },
-                      propsForDots: {
-                        r: '5',
-                        strokeWidth: '2',
-                        stroke: '#2196F3',
-                        fill: '#2196F3'
-                      }
-                    }}
-                    bezier
-                    style={styles.chart}
-                  />
-                  <View style={styles.matchResultsRow}>
-                    {eloHistory.map((match, idx) => (
-                      <View key={idx} style={styles.matchResult}>
-                        <View style={[
-                          styles.matchDot,
-                          { backgroundColor: match.won ? '#4CAF50' : '#F44336' }
-                        ]} />
-                      </View>
-                    ))}
-                  </View>
-                  <View style={styles.chartNote}>
-                    <Text style={styles.chartNoteText}>
-                      • Green = Win  • Red = Loss
-                    </Text>
-                  </View>
-                </View>
-              )}
-
-              {winLossTrends.length > 0 && (
-                <View style={styles.chartContainer}>
-                  <Text style={styles.chartTitle}>Win/Loss Trends</Text>
-                  <Text style={styles.chartSubtitle}>Weekly performance over time</Text>
-                  <BarChart
-                    data={{
-                      labels: winLossTrends.map(t => t.label.split(' ')[0]),
-                      datasets: [{
-                        data: winLossTrends.map(t => t.winPercentage)
-                      }]
-                    }}
-                    width={screenWidth - 60}
-                    height={220}
-                    yAxisLabel=""
-                    yAxisSuffix="%"
-                    chartConfig={{
-                      backgroundColor: '#ffffff',
-                      backgroundGradientFrom: '#ffffff',
-                      backgroundGradientTo: '#ffffff',
-                      decimalPlaces: 0,
-                      color: (opacity = 1) => `rgba(76, 175, 80, ${opacity})`,
-                      labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                      style: {
-                        borderRadius: 16
-                      }
-                    }}
-                    style={styles.chart}
-                    fromZero
-                  />
-                  <View style={styles.trendsDetails}>
-                    {winLossTrends.slice(-3).reverse().map((trend, idx) => (
-                      <View key={idx} style={styles.trendItem}>
-                        <Text style={styles.trendLabel}>{trend.label}</Text>
-                        <Text style={styles.trendStats}>
-                          {trend.wins}W - {trend.losses}L ({trend.winPercentage}%)
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              )}
-
-              {eloHistory.length === 0 && winLossTrends.length === 0 && (
-                <View style={styles.emptyState}>
-                  <Ionicons name="analytics-outline" size={48} color="#ccc" />
-                  <Text style={styles.emptyStateText}>No analytics data yet</Text>
-                  <Text style={styles.emptyStateSubtext}>
-                    Play more matches to see analytics
-                  </Text>
-                </View>
-              )}
-            </>
-          )}
-        </View>
-      )}
     </ScrollView>
   );
 }
@@ -521,11 +568,6 @@ const styles = StyleSheet.create({
   playerInfo: {
     flex: 1,
     marginLeft: 15,
-  },
-  playerName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
   },
   playerRecord: {
     fontSize: 14,
@@ -709,5 +751,165 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#333',
     fontWeight: 'bold',
+  },
+  // New styles for improved player cards
+  playerCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: 'hidden',
+  },
+  playerCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+  },
+  rankBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2196F3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  rankText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  playerMainInfo: {
+    flex: 1,
+  },
+  playerName: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  compactStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactStatItem: {
+    alignItems: 'center',
+    paddingHorizontal: 8,
+  },
+  compactStatValue: {
+    fontSize: 13,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  compactStatLabel: {
+    fontSize: 10,
+    color: '#999',
+    marginTop: 1,
+  },
+  compactStatDivider: {
+    width: 1,
+    height: 20,
+    backgroundColor: '#e0e0e0',
+  },
+  expandIcon: {
+    marginLeft: 8,
+    alignSelf: 'center',
+  },
+  expandedContent: {
+    backgroundColor: '#f8f9fa',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+  },
+  expandedSection: {
+    padding: 16,
+  },
+  expandedSectionTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 12,
+  },
+  matchHistoryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  matchResultIndicator: {
+    width: 4,
+    height: 30,
+    borderRadius: 2,
+    marginRight: 12,
+  },
+  matchHistoryDetails: {
+    flex: 1,
+  },
+  matchOpponent: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  matchScore: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: 2,
+  },
+  matchDate: {
+    fontSize: 12,
+    color: '#999',
+  },
+  noMatchesText: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  viewChartsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 12,
+    gap: 8,
+  },
+  viewChartsButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#2196F3',
+  },
+  chartsInCard: {
+    paddingHorizontal: 16,
+    paddingBottom: 16,
+  },
+  chartLoadingInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 10,
+  },
+  loadingTextInline: {
+    fontSize: 14,
+    color: '#2196F3',
+  },
+  chartContainerInline: {
+    marginBottom: 16,
+  },
+  chartTitleInline: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 10,
+  },
+  chartInline: {
+    borderRadius: 8,
+    marginVertical: 4,
   },
 });

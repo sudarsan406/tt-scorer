@@ -86,6 +86,8 @@ export interface Tournament {
   status: 'upcoming' | 'in_progress' | 'completed';
   format: 'single_elimination' | 'double_elimination' | 'round_robin';
   bestOf?: number; // 3, 5, 7 sets - defaults to 3
+  isDoubles?: boolean; // Support for doubles tournaments
+  roundRobinRounds?: number; // Number of times each player/team plays each other (default: 1)
   createdAt: Date;
   updatedAt: Date;
 }

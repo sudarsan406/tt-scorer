@@ -169,11 +169,12 @@ export default function MatchCard({
         <View style={styles.playersSection}>
           <View style={[
             styles.playerRow,
+            styles.player1Row,
             winnerId === player1Id && styles.winnerRow
           ]}>
             <Text style={[
               styles.playerName,
-              winnerId === player1Id && styles.winnerName
+              styles.player1Name
             ]}>
               {getDisplayName(player1Id, player1Name, team1Name)}
             </Text>
@@ -181,7 +182,7 @@ export default function MatchCard({
               {status === 'completed' && player1Sets !== undefined && (
                 <Text style={[
                   styles.scoreText,
-                  winnerId === player1Id && styles.winnerScore
+                  styles.player1Score
                 ]}>
                   {player1Sets}
                 </Text>
@@ -191,16 +192,17 @@ export default function MatchCard({
               )}
             </View>
           </View>
-          
+
           <Text style={styles.vsText}>vs</Text>
-          
+
           <View style={[
             styles.playerRow,
+            styles.player2Row,
             winnerId === player2Id && styles.winnerRow
           ]}>
             <Text style={[
               styles.playerName,
-              winnerId === player2Id && styles.winnerName
+              styles.player2Name
             ]}>
               {getDisplayName(player2Id, player2Name, team2Name)}
             </Text>
@@ -208,7 +210,7 @@ export default function MatchCard({
               {status === 'completed' && player2Sets !== undefined && (
                 <Text style={[
                   styles.scoreText,
-                  winnerId === player2Id && styles.winnerScore
+                  styles.player2Score
                 ]}>
                   {player2Sets}
                 </Text>
@@ -223,35 +225,81 @@ export default function MatchCard({
       
       {/* Completed match score section */}
       {status === 'completed' && player1Sets !== undefined && player2Sets !== undefined && matchId && (
-        <TouchableOpacity 
-          style={styles.scoreSection}
-          onPress={toggleExpansion}
-          activeOpacity={0.7}
-        >
-          <View style={styles.scoreRow}>
+        <View style={styles.completedMatchContainer}>
+          <TouchableOpacity
+            style={styles.scoreSection}
+            onPress={toggleExpansion}
+            activeOpacity={0.7}
+          >
             <View style={styles.scoreInfo}>
-              <Text style={styles.mainScoreText}>
-                {player1Sets} - {player2Sets}
-              </Text>
+              <View style={styles.scoreWithChevron}>
+                <Text style={[
+                  styles.mainScoreText,
+                  winnerId === player1Id && styles.player1ScoreWin
+                ]}>
+                  {player1Sets}
+                </Text>
+                <Text style={styles.scoreSeparator}>-</Text>
+                <Text style={[
+                  styles.mainScoreText,
+                  winnerId === player2Id && styles.player2ScoreWin
+                ]}>
+                  {player2Sets}
+                </Text>
+                {loading ? (
+                  <Text style={styles.loadingText}>Loading...</Text>
+                ) : (
+                  <Ionicons
+                    name={isExpanded ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color="#2196F3"
+                    style={styles.chevronIcon}
+                  />
+                )}
+              </View>
               {winnerId && (
                 <Text style={styles.winnerText}>
                   Winner: {getWinnerName()}
                 </Text>
               )}
             </View>
-            {loading ? (
-              <Text style={styles.loadingText}>Loading...</Text>
-            ) : (
-              <Ionicons 
-                name={isExpanded ? "chevron-up" : "chevron-down"} 
-                size={20} 
-                color="#2196F3" 
-              />
-            )}
-          </View>
-        </TouchableOpacity>
+          </TouchableOpacity>
+
+          {/* Detailed scores (expanded) - Now inside the same container */}
+          {isExpanded && (
+            <View style={styles.detailedScores}>
+              {sets.length > 0 ? (
+                sets.map((set) => (
+                  <View key={set.id} style={styles.setScore}>
+                    <Text style={styles.setNumber}>Set {set.setNumber}</Text>
+                    <View style={styles.setScoreContainer}>
+                      <Text style={[
+                        styles.setScoreText,
+                        set.winnerId === player1Id && styles.player1ScoreWin
+                      ]}>
+                        {set.player1Score}
+                      </Text>
+                      <Text style={styles.setScoreSeparator}>-</Text>
+                      <Text style={[
+                        styles.setScoreText,
+                        set.winnerId === player2Id && styles.player2ScoreWin
+                      ]}>
+                        {set.player2Score}
+                      </Text>
+                    </View>
+                    {set.player1Score > 10 && set.player2Score > 10 && (
+                      <Text style={styles.deuceIndicator}>Deuce</Text>
+                    )}
+                  </View>
+                ))
+              ) : (
+                <Text style={styles.noDataText}>No detailed scores available</Text>
+              )}
+            </View>
+          )}
+        </View>
       )}
-      
+
       {/* In progress match info */}
       {status === 'in_progress' && (
         <View style={styles.scoreSection}>
@@ -261,31 +309,6 @@ export default function MatchCard({
             </Text>
             <Text style={styles.currentSetText}>Current Set: {currentSet || 1}</Text>
           </View>
-        </View>
-      )}
-      
-      {/* Detailed scores (expanded) */}
-      {status === 'completed' && isExpanded && matchId && (
-        <View style={styles.detailedScores}>
-          <Text style={styles.detailedScoresTitle}>Set Scores:</Text>
-          {sets.length > 0 ? (
-            sets.map((set) => (
-              <View key={set.id} style={styles.setScore}>
-                <Text style={styles.setNumber}>Set {set.setNumber}:</Text>
-                <Text style={[
-                  styles.setScoreText,
-                  set.winnerId === player1Id ? styles.player1Winner : styles.player2Winner
-                ]}>
-                  {set.player1Score} - {set.player2Score}
-                </Text>
-                {set.player1Score > 10 && set.player2Score > 10 && (
-                  <Text style={styles.deuceIndicator}>Deuce</Text>
-                )}
-              </View>
-            ))
-          ) : (
-            <Text style={styles.noDataText}>No detailed scores available</Text>
-          )}
         </View>
       )}
       
@@ -325,14 +348,18 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
+    flexWrap: 'nowrap', // Prevent wrapping
   },
   headerLeft: {
-    flex: 1,
+    flex: 0,
+    marginRight: 10, // Add spacing between match number and status
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flex: 1,
+    justifyContent: 'flex-end', // Align to the right
   },
   matchTitle: {
     fontSize: 14,
@@ -359,7 +386,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   winnerRow: {
-    backgroundColor: '#f0f8ff',
+    backgroundColor: 'rgba(255, 215, 0, 0.1)', // Light gold background for winner
     paddingHorizontal: 8,
     borderRadius: 4,
   },
@@ -393,19 +420,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
   },
-  scoreSection: {
-    paddingVertical: 10,
+  completedMatchContainer: {
     marginTop: 10,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    overflow: 'hidden',
   },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  scoreSection: {
+    paddingVertical: 12,
     paddingHorizontal: 10,
   },
   scoreInfo: {
     alignItems: 'center',
-    flex: 1,
+  },
+  scoreWithChevron: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 4,
   },
   mainScoreText: {
     fontSize: 20,
@@ -439,34 +471,32 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   detailedScores: {
-    backgroundColor: '#f8f9fa',
-    padding: 15,
-    marginTop: 10,
-    borderRadius: 8,
-    borderLeftWidth: 3,
-    borderLeftColor: '#2196F3',
-  },
-  detailedScoresTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
   },
   setScore: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
+    justifyContent: 'center',
+    paddingVertical: 3,
+    gap: 15,
   },
   setNumber: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#666',
     fontWeight: '500',
+    minWidth: 40,
   },
   setScoreText: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: 'bold',
     color: '#333',
+    minWidth: 50,
+    textAlign: 'center',
   },
   player1Winner: {
     color: '#4CAF50',
@@ -491,5 +521,61 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
     textAlign: 'center',
     paddingVertical: 10,
+  },
+  chevronIcon: {
+    marginLeft: 8, // Add some spacing between score and chevron
+  },
+  // Player 1 color theme (blue)
+  player1Row: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#2196F3',
+    paddingLeft: 5,
+  },
+  player1Name: {
+    color: '#2196F3',
+    fontWeight: '600',
+  },
+  player1Score: {
+    color: '#2196F3',
+    fontWeight: 'bold',
+  },
+  player1ScoreWin: {
+    color: '#2196F3',
+    fontWeight: 'bold',
+    fontSize: 22,
+  },
+  // Player 2 color theme (green)
+  player2Row: {
+    borderLeftWidth: 3,
+    borderLeftColor: '#4CAF50',
+    paddingLeft: 5,
+  },
+  player2Name: {
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  player2Score: {
+    color: '#4CAF50',
+    fontWeight: 'bold',
+  },
+  player2ScoreWin: {
+    color: '#4CAF50',
+    fontWeight: 'bold',
+    fontSize: 22,
+  },
+  scoreSeparator: {
+    fontSize: 20,
+    color: '#666',
+    marginHorizontal: 8,
+  },
+  setScoreContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setScoreSeparator: {
+    fontSize: 14,
+    color: '#666',
+    marginHorizontal: 5,
   },
 });
