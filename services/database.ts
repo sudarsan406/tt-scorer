@@ -217,6 +217,8 @@ class DatabaseService {
         status TEXT NOT NULL DEFAULT 'upcoming',
         format TEXT NOT NULL,
         best_of INTEGER DEFAULT 3,
+        is_doubles BOOLEAN DEFAULT FALSE,
+        round_robin_rounds INTEGER DEFAULT 1,
         winner_id TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
