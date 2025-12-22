@@ -588,10 +588,10 @@ export class BracketGenerator {
 
   /**
    * Suggest next King of Court match
-   * Winner stays on court, next challenger is selected based on:
-   * 1. Players who haven't played yet (priority)
-   * 2. Players who have played least
-   * 3. Random if all have played equally
+   * Winner stays on court, next challenger is selected based on fair rotation:
+   * 1. Players who haven't played yet (highest priority)
+   * 2. Players waiting in rotation (have played but not recently)
+   * 3. Recent loser only gets picked after ALL other players have played
    */
   static suggestNextKingOfCourtMatch(
     matches: BracketMatch[],
@@ -607,58 +607,86 @@ export class BracketGenerator {
     const winner = players.find(p => p.id === completedMatch.winnerId);
     if (!winner) return null;
 
-    // Get standings to find who has played least
+    // Identify the recent loser
+    const recentLoserId = completedMatch.player1Id === completedMatch.winnerId
+      ? completedMatch.player2Id
+      : completedMatch.player1Id;
+
+    // Get standings to analyze play patterns
     const standings = this.getKingOfCourtStandings(matches, players);
 
-    // Find next challenger: exclude the winner and the loser of current match
-    const loserIds = [
-      completedMatch.player1Id === completedMatch.winnerId ? completedMatch.player2Id : completedMatch.player1Id
-    ];
-
-    const availablePlayers = standings.filter(s =>
-      s.player.id !== completedMatch.winnerId &&
-      !loserIds.includes(s.player.id)
+    // Separate players into groups (excluding current winner)
+    const unplayedPlayers = standings.filter(s =>
+      s.player.id !== completedMatch.winnerId && s.matchesPlayed === 0
     );
 
-    if (availablePlayers.length === 0) {
-      // If no other players available, the loser can challenge again
-      const loser = players.find(p => p.id === loserIds[0]);
-      if (!loser) return null;
+    const playedPlayersExceptRecentLoser = standings.filter(s =>
+      s.player.id !== completedMatch.winnerId &&
+      s.player.id !== recentLoserId &&
+      s.matchesPlayed > 0
+    );
 
-      // Create next match
+    const recentLoser = standings.find(s => s.player.id === recentLoserId);
+
+    // Priority 1: Players who haven't played yet
+    if (unplayedPlayers.length > 0) {
+      // Randomly pick one if multiple unplayed players
+      const challenger = unplayedPlayers[Math.floor(Math.random() * unplayedPlayers.length)].player;
+
       const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
       return {
         id: `match_${nextMatchNumber}`,
         player1Id: winner.id,
-        player2Id: loser.id,
+        player2Id: challenger.id,
         player1Name: winner.name,
-        player2Name: loser.name,
+        player2Name: challenger.name,
         round: 1,
         matchNumber: nextMatchNumber,
         status: 'scheduled',
       };
     }
 
-    // Sort by matches played (ascending) to get player who has played least
-    availablePlayers.sort((a, b) => a.matchesPlayed - b.matchesPlayed);
+    // Priority 2: Players in waiting rotation (played before, but not the recent loser)
+    if (playedPlayersExceptRecentLoser.length > 0) {
+      // Sort by matches played (ascending) for fair rotation
+      playedPlayersExceptRecentLoser.sort((a, b) => a.matchesPlayed - b.matchesPlayed);
 
-    // If multiple players tied for least played, randomize among them
-    const minPlayed = availablePlayers[0].matchesPlayed;
-    const leastPlayedPlayers = availablePlayers.filter(p => p.matchesPlayed === minPlayed);
-    const challenger = leastPlayedPlayers[Math.floor(Math.random() * leastPlayedPlayers.length)].player;
+      // Get player(s) who have played least
+      const minPlayed = playedPlayersExceptRecentLoser[0].matchesPlayed;
+      const leastPlayedPlayers = playedPlayersExceptRecentLoser.filter(p => p.matchesPlayed === minPlayed);
 
-    // Create next match
-    const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
-    return {
-      id: `match_${nextMatchNumber}`,
-      player1Id: winner.id,
-      player2Id: challenger.id,
-      player1Name: winner.name,
-      player2Name: challenger.name,
-      round: 1,
-      matchNumber: nextMatchNumber,
-      status: 'scheduled',
-    };
+      // Randomly select among those with least plays
+      const challenger = leastPlayedPlayers[Math.floor(Math.random() * leastPlayedPlayers.length)].player;
+
+      const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
+      return {
+        id: `match_${nextMatchNumber}`,
+        player1Id: winner.id,
+        player2Id: challenger.id,
+        player1Name: winner.name,
+        player2Name: challenger.name,
+        round: 1,
+        matchNumber: nextMatchNumber,
+        status: 'scheduled',
+      };
+    }
+
+    // Priority 3: Recent loser (only when no other players available)
+    if (recentLoser) {
+      const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
+      return {
+        id: `match_${nextMatchNumber}`,
+        player1Id: winner.id,
+        player2Id: recentLoser.player.id,
+        player1Name: winner.name,
+        player2Name: recentLoser.player.name,
+        round: 1,
+        matchNumber: nextMatchNumber,
+        status: 'scheduled',
+      };
+    }
+
+    return null;
   }
 
   /**
