@@ -102,6 +102,13 @@ class DatabaseService {
       // Column might already exist, ignore error
     }
 
+    // Add kingOfCourtWins column to tournaments table
+    try {
+      await this.db.execAsync(`ALTER TABLE tournaments ADD COLUMN king_of_court_wins INTEGER DEFAULT 3`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
     // Add doubles support columns to tournament_matches table
     try {
       await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player3_id TEXT`);

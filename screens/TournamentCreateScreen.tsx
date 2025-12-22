@@ -28,11 +28,12 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
   const [description, setDescription] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedPlayers, setSelectedPlayers] = useState<Player[]>([]);
-  const [format, setFormat] = useState<'single_elimination' | 'round_robin'>('single_elimination');
+  const [format, setFormat] = useState<'single_elimination' | 'round_robin' | 'king_of_court'>('single_elimination');
   const [bestOf, setBestOf] = useState(3);
   const [isDoubles, setIsDoubles] = useState(false);
   const [doublesTeams, setDoublesTeams] = useState<DoublesTeam[]>([]);
   const [roundRobinRounds, setRoundRobinRounds] = useState(1);
+  const [kingOfCourtWins, setKingOfCourtWins] = useState(3);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
@@ -157,6 +158,7 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
         bestOf,
         isDoubles,
         roundRobinRounds,
+        kingOfCourtWins,
       });
 
       // Get all unique players from teams or selected players
@@ -286,10 +288,10 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
             style={[styles.formatButton, format === 'single_elimination' && styles.formatButtonActive]}
             onPress={() => setFormat('single_elimination')}
           >
-            <Ionicons 
-              name="trophy" 
-              size={24} 
-              color={format === 'single_elimination' ? '#fff' : '#666'} 
+            <Ionicons
+              name="trophy"
+              size={24}
+              color={format === 'single_elimination' ? '#fff' : '#666'}
             />
             <Text style={[styles.formatButtonText, format === 'single_elimination' && styles.formatButtonTextActive]}>
               Single Elimination
@@ -298,21 +300,38 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
               Knockout tournament
             </Text>
           </TouchableOpacity>
-          
+
           <TouchableOpacity
             style={[styles.formatButton, format === 'round_robin' && styles.formatButtonActive]}
             onPress={() => setFormat('round_robin')}
           >
-            <Ionicons 
-              name="repeat" 
-              size={24} 
-              color={format === 'round_robin' ? '#fff' : '#666'} 
+            <Ionicons
+              name="repeat"
+              size={24}
+              color={format === 'round_robin' ? '#fff' : '#666'}
             />
             <Text style={[styles.formatButtonText, format === 'round_robin' && styles.formatButtonTextActive]}>
               Round Robin
             </Text>
             <Text style={[styles.formatDescription, format === 'round_robin' && styles.formatDescriptionActive]}>
               Everyone plays everyone
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.formatButton, format === 'king_of_court' && styles.formatButtonActive]}
+            onPress={() => setFormat('king_of_court')}
+          >
+            <Ionicons
+              name="podium"
+              size={24}
+              color={format === 'king_of_court' ? '#fff' : '#666'}
+            />
+            <Text style={[styles.formatButtonText, format === 'king_of_court' && styles.formatButtonTextActive]}>
+              King of the Court
+            </Text>
+            <Text style={[styles.formatDescription, format === 'king_of_court' && styles.formatDescriptionActive]}>
+              Winners stay, first to X wins
             </Text>
           </TouchableOpacity>
         </View>
@@ -375,6 +394,28 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
               >
                 <Text style={[styles.roundButtonText, roundRobinRounds === rounds && styles.roundButtonTextActive]}>
                   {rounds} {rounds === 1 ? 'Round' : 'Rounds'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
+
+      {format === 'king_of_court' && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Wins to Claim a Game</Text>
+          <Text style={styles.formatNote}>
+            First player to reach this many wins claims that game. Player with most games won is the champion.
+          </Text>
+          <View style={styles.roundsContainer}>
+            {[3, 5, 7, 10].map((wins) => (
+              <TouchableOpacity
+                key={wins}
+                style={[styles.roundButton, kingOfCourtWins === wins && styles.roundButtonActive]}
+                onPress={() => setKingOfCourtWins(wins)}
+              >
+                <Text style={[styles.roundButtonText, kingOfCourtWins === wins && styles.roundButtonTextActive]}>
+                  {wins} Wins
                 </Text>
               </TouchableOpacity>
             ))}
@@ -452,7 +493,9 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
         <View style={styles.summaryItem}>
           <Text style={styles.summaryLabel}>Format:</Text>
           <Text style={styles.summaryValue}>
-            {format === 'single_elimination' ? 'Single Elimination' : 'Round Robin'}
+            {format === 'single_elimination' ? 'Single Elimination' :
+             format === 'round_robin' ? 'Round Robin' :
+             'King of the Court'}
           </Text>
         </View>
         <View style={styles.summaryItem}>
@@ -467,6 +510,12 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
           <View style={styles.summaryItem}>
             <Text style={styles.summaryLabel}>Rounds:</Text>
             <Text style={styles.summaryValue}>{roundRobinRounds} round(s)</Text>
+          </View>
+        )}
+        {format === 'king_of_court' && (
+          <View style={styles.summaryItem}>
+            <Text style={styles.summaryLabel}>Wins per Game:</Text>
+            <Text style={styles.summaryValue}>{kingOfCourtWins} wins</Text>
           </View>
         )}
         <View style={styles.summaryItem}>

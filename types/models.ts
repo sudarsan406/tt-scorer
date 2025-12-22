@@ -84,10 +84,11 @@ export interface Tournament {
   matchStats?: { completed: number; total: number };
   winnerId?: string;
   status: 'upcoming' | 'in_progress' | 'completed';
-  format: 'single_elimination' | 'double_elimination' | 'round_robin';
+  format: 'single_elimination' | 'double_elimination' | 'round_robin' | 'king_of_court';
   bestOf?: number; // 3, 5, 7 sets - defaults to 3
   isDoubles?: boolean; // Support for doubles tournaments
   roundRobinRounds?: number; // Number of times each player/team plays each other (default: 1)
+  kingOfCourtWins?: number; // Number of wins needed to claim a "game" (default: 3)
   createdAt: Date;
   updatedAt: Date;
 }
