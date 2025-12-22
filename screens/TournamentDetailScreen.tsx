@@ -181,7 +181,7 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
                 [
                   {
                     text: 'OK',
-                    onPress: () => navigation.navigate('Tournaments'),
+                    onPress: () => navigation.navigate('Main', { screen: 'Tournaments' }),
                   },
                 ]
               );
