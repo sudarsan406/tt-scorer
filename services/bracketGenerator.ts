@@ -476,8 +476,8 @@ export class BracketGenerator {
   /**
    * Generate King of the Court format
    * This is a flexible format where any number of players can participate
-   * Players track individual match wins, and first to X wins claims a "game"
-   * The bracket just creates placeholder matches for tracking
+   * Matches are created dynamically - this just sets up the tournament structure
+   * No pre-generated matches - players can challenge anyone at any time
    */
   static generateKingOfCourt(players: Player[]): BracketMatch[] {
     const playerCount = players.length;
@@ -486,38 +486,15 @@ export class BracketGenerator {
       throw new Error('King of the Court requires at least 3 players');
     }
 
-    // Shuffle players for initial order
-    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
-
-    const matches: BracketMatch[] = [];
-    let currentMatchId = 1;
-
-    // Generate initial pool matches (everyone vs everyone)
-    // These are just placeholders - in King of Court, matches are played dynamically
-    for (let i = 0; i < playerCount; i++) {
-      for (let j = i + 1; j < playerCount; j++) {
-        const player1 = shuffledPlayers[i];
-        const player2 = shuffledPlayers[j];
-
-        matches.push({
-          id: `match_${currentMatchId}`,
-          player1Id: player1.id,
-          player2Id: player2.id,
-          player1Name: player1.name,
-          player2Name: player2.name,
-          round: 1, // All matches are in round 1 for King of Court
-          matchNumber: currentMatchId,
-          status: 'scheduled',
-        });
-        currentMatchId++;
-      }
-    }
-
-    return matches;
+    // For King of Court, we don't pre-generate matches
+    // Matches are created on-demand when players start playing
+    // Return an empty array - matches will be added dynamically
+    return [];
   }
 
   /**
    * Generate King of the Court format for doubles
+   * Matches are created dynamically - this just sets up the tournament structure
    */
   static generateKingOfCourtDoubles(teams: DoublesTeam[]): BracketMatch[] {
     const teamCount = teams.length;
@@ -526,37 +503,48 @@ export class BracketGenerator {
       throw new Error('King of the Court requires at least 3 teams');
     }
 
-    const shuffledTeams = [...teams].sort(() => Math.random() - 0.5);
-    const matches: BracketMatch[] = [];
-    let currentMatchId = 1;
+    // For King of Court, we don't pre-generate matches
+    // Matches are created on-demand when teams start playing
+    // Return an empty array - matches will be added dynamically
+    return [];
+  }
 
-    // Generate all possible team pairings
-    for (let i = 0; i < teamCount; i++) {
-      for (let j = i + 1; j < teamCount; j++) {
-        const team1 = shuffledTeams[i];
-        const team2 = shuffledTeams[j];
+  /**
+   * Get King of Court standings
+   * Tracks individual match wins for each player
+   * Used to determine who has won the most "games" (first to X match wins)
+   */
+  static getKingOfCourtStandings(matches: BracketMatch[], players: Player[]): Array<{
+    player: Player;
+    matchWins: number;
+    matchLosses: number;
+    gamesWon: number; // Number of "games" claimed (if using game tracking)
+  }> {
+    const standings = players.map(player => ({
+      player,
+      matchWins: 0,
+      matchLosses: 0,
+      gamesWon: 0,
+    }));
 
-        matches.push({
-          id: `match_${currentMatchId}`,
-          player1Id: team1.player1.id,
-          player2Id: team2.player1.id,
-          player3Id: team1.player2.id,
-          player4Id: team2.player2.id,
-          player1Name: team1.player1.name,
-          player2Name: team2.player1.name,
-          player3Name: team1.player2.name,
-          player4Name: team2.player2.name,
-          team1Name: team1.teamName || `${team1.player1.name} / ${team1.player2.name}`,
-          team2Name: team2.teamName || `${team2.player1.name} / ${team2.player2.name}`,
-          round: 1,
-          matchNumber: currentMatchId,
-          status: 'scheduled',
-        });
-        currentMatchId++;
+    // Count wins and losses from completed matches
+    matches.filter(m => m.status === 'completed').forEach(match => {
+      const player1Standing = standings.find(s => s.player.id === match.player1Id);
+      const player2Standing = standings.find(s => s.player.id === match.player2Id);
+
+      if (player1Standing && player2Standing) {
+        if (match.winnerId === match.player1Id) {
+          player1Standing.matchWins++;
+          player2Standing.matchLosses++;
+        } else if (match.winnerId === match.player2Id) {
+          player2Standing.matchWins++;
+          player1Standing.matchLosses++;
+        }
       }
-    }
+    });
 
-    return matches;
+    // Sort by match wins (descending)
+    return standings.sort((a, b) => b.matchWins - a.matchWins);
   }
 
   /**
