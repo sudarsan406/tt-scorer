@@ -340,17 +340,17 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Match Format</Text>
         <View style={styles.bestOfContainer}>
-          {[3, 5, 7].map((sets) => (
+          {[1, 3, 5, 7].map((sets) => (
             <TouchableOpacity
               key={sets}
               style={[styles.bestOfButton, bestOf === sets && styles.bestOfButtonActive]}
               onPress={() => setBestOf(sets)}
             >
               <Text style={[styles.bestOfButtonText, bestOf === sets && styles.bestOfButtonTextActive]}>
-                Best of {sets}
+                {sets === 1 ? 'Single Game' : `Best of ${sets}`}
               </Text>
               <Text style={[styles.bestOfDescription, bestOf === sets && styles.bestOfDescriptionActive]}>
-                {sets === 3 ? 'First to 2 sets' : sets === 5 ? 'First to 3 sets' : 'First to 4 sets'}
+                {sets === 1 ? 'One game only' : sets === 3 ? 'First to 2 sets' : sets === 5 ? 'First to 3 sets' : 'First to 4 sets'}
               </Text>
             </TouchableOpacity>
           ))}
