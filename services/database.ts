@@ -134,6 +134,31 @@ class DatabaseService {
       // Column might already exist, ignore error
     }
 
+    // Add player name columns for quick access
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player1_name TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player2_name TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player3_name TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
+    try {
+      await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player4_name TEXT`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
     const tables = [
       `CREATE TABLE IF NOT EXISTS players (
         id TEXT PRIMARY KEY,
