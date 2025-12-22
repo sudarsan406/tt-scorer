@@ -474,6 +474,92 @@ export class BracketGenerator {
   }
 
   /**
+   * Generate King of the Court format
+   * This is a flexible format where any number of players can participate
+   * Players track individual match wins, and first to X wins claims a "game"
+   * The bracket just creates placeholder matches for tracking
+   */
+  static generateKingOfCourt(players: Player[]): BracketMatch[] {
+    const playerCount = players.length;
+
+    if (playerCount < 3) {
+      throw new Error('King of the Court requires at least 3 players');
+    }
+
+    // Shuffle players for initial order
+    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+
+    const matches: BracketMatch[] = [];
+    let currentMatchId = 1;
+
+    // Generate initial pool matches (everyone vs everyone)
+    // These are just placeholders - in King of Court, matches are played dynamically
+    for (let i = 0; i < playerCount; i++) {
+      for (let j = i + 1; j < playerCount; j++) {
+        const player1 = shuffledPlayers[i];
+        const player2 = shuffledPlayers[j];
+
+        matches.push({
+          id: `match_${currentMatchId}`,
+          player1Id: player1.id,
+          player2Id: player2.id,
+          player1Name: player1.name,
+          player2Name: player2.name,
+          round: 1, // All matches are in round 1 for King of Court
+          matchNumber: currentMatchId,
+          status: 'scheduled',
+        });
+        currentMatchId++;
+      }
+    }
+
+    return matches;
+  }
+
+  /**
+   * Generate King of the Court format for doubles
+   */
+  static generateKingOfCourtDoubles(teams: DoublesTeam[]): BracketMatch[] {
+    const teamCount = teams.length;
+
+    if (teamCount < 3) {
+      throw new Error('King of the Court requires at least 3 teams');
+    }
+
+    const shuffledTeams = [...teams].sort(() => Math.random() - 0.5);
+    const matches: BracketMatch[] = [];
+    let currentMatchId = 1;
+
+    // Generate all possible team pairings
+    for (let i = 0; i < teamCount; i++) {
+      for (let j = i + 1; j < teamCount; j++) {
+        const team1 = shuffledTeams[i];
+        const team2 = shuffledTeams[j];
+
+        matches.push({
+          id: `match_${currentMatchId}`,
+          player1Id: team1.player1.id,
+          player2Id: team2.player1.id,
+          player3Id: team1.player2.id,
+          player4Id: team2.player2.id,
+          player1Name: team1.player1.name,
+          player2Name: team2.player1.name,
+          player3Name: team1.player2.name,
+          player4Name: team2.player2.name,
+          team1Name: team1.teamName || `${team1.player1.name} / ${team1.player2.name}`,
+          team2Name: team2.teamName || `${team2.player1.name} / ${team2.player2.name}`,
+          round: 1,
+          matchNumber: currentMatchId,
+          status: 'scheduled',
+        });
+        currentMatchId++;
+      }
+    }
+
+    return matches;
+  }
+
+  /**
    * Get round robin standings with match wins and set difference (supports multiple rounds)
    */
   static getRoundRobinStandings(matches: BracketMatch[], players: Player[], roundRobinRounds: number = 1): Array<{

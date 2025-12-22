@@ -748,6 +748,12 @@ class DatabaseService {
       } else {
         bracketMatches = BracketGenerator.generateRoundRobin(players, roundRobinRounds);
       }
+    } else if (format === 'king_of_court') {
+      if (isDoubles && doublesTeams) {
+        bracketMatches = BracketGenerator.generateKingOfCourtDoubles(doublesTeams);
+      } else {
+        bracketMatches = BracketGenerator.generateKingOfCourt(players);
+      }
     } else {
       throw new Error(`Unsupported tournament format: ${format}`);
     }
