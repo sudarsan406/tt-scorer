@@ -476,8 +476,7 @@ export class BracketGenerator {
   /**
    * Generate King of the Court format
    * This is a flexible format where any number of players can participate
-   * Matches are created dynamically - this just sets up the tournament structure
-   * No pre-generated matches - players can challenge anyone at any time
+   * Creates one initial match randomly, then matches are added dynamically
    */
   static generateKingOfCourt(players: Player[]): BracketMatch[] {
     const playerCount = players.length;
@@ -486,15 +485,28 @@ export class BracketGenerator {
       throw new Error('King of the Court requires at least 3 players');
     }
 
-    // For King of Court, we don't pre-generate matches
-    // Matches are created on-demand when players start playing
-    // Return an empty array - matches will be added dynamically
-    return [];
+    // Shuffle players for random selection
+    const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
+
+    // Create the first match with two random players
+    const matches: BracketMatch[] = [{
+      id: 'match_1',
+      player1Id: shuffledPlayers[0].id,
+      player2Id: shuffledPlayers[1].id,
+      player1Name: shuffledPlayers[0].name,
+      player2Name: shuffledPlayers[1].name,
+      round: 1,
+      matchNumber: 1,
+      status: 'scheduled',
+    }];
+
+    // Additional matches will be created dynamically as the tournament progresses
+    return matches;
   }
 
   /**
    * Generate King of the Court format for doubles
-   * Matches are created dynamically - this just sets up the tournament structure
+   * Creates one initial match randomly, then matches are added dynamically
    */
   static generateKingOfCourtDoubles(teams: DoublesTeam[]): BracketMatch[] {
     const teamCount = teams.length;
@@ -503,10 +515,32 @@ export class BracketGenerator {
       throw new Error('King of the Court requires at least 3 teams');
     }
 
-    // For King of Court, we don't pre-generate matches
-    // Matches are created on-demand when teams start playing
-    // Return an empty array - matches will be added dynamically
-    return [];
+    // Shuffle teams for random selection
+    const shuffledTeams = [...teams].sort(() => Math.random() - 0.5);
+
+    // Create the first match with two random teams
+    const team1 = shuffledTeams[0];
+    const team2 = shuffledTeams[1];
+
+    const matches: BracketMatch[] = [{
+      id: 'match_1',
+      player1Id: team1.player1.id,
+      player2Id: team2.player1.id,
+      player3Id: team1.player2.id,
+      player4Id: team2.player2.id,
+      player1Name: team1.player1.name,
+      player2Name: team2.player1.name,
+      player3Name: team1.player2.name,
+      player4Name: team2.player2.name,
+      team1Name: team1.teamName || `${team1.player1.name} / ${team1.player2.name}`,
+      team2Name: team2.teamName || `${team2.player1.name} / ${team2.player2.name}`,
+      round: 1,
+      matchNumber: 1,
+      status: 'scheduled',
+    }];
+
+    // Additional matches will be created dynamically as the tournament progresses
+    return matches;
   }
 
   /**
