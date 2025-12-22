@@ -1012,16 +1012,19 @@ class DatabaseService {
     if ((tournament as any)?.format === 'round_robin') {
       // For round robin, check if group stage is complete and seed playoffs
       await this.seedRoundRobinPlayoffs(tournamentId);
+    } else if ((tournament as any)?.format === 'king_of_court') {
+      // For King of Court, auto-generate next match suggestion
+      await this.suggestNextKingOfCourtMatch(tournamentId, completedMatchId, winnerId);
     } else {
       // Single elimination logic
       const nextMatch = await this.db.getFirstAsync(`
-        SELECT * FROM tournament_matches 
+        SELECT * FROM tournament_matches
         WHERE tournament_id = ? AND (parent_match1_id = ? OR parent_match2_id = ?)
       `, [tournamentId, completedMatchId, completedMatchId]);
 
       if (nextMatch) {
         const now = new Date().toISOString();
-        
+
         // Determine if winner goes to player1 or player2 slot
         if ((nextMatch as any).parent_match1_id === completedMatchId) {
           await this.db.runAsync(
@@ -1083,6 +1086,49 @@ class DatabaseService {
         `UPDATE tournaments SET status = ?, winner_id = ?, updated_at = ? WHERE id = ?`,
         ['completed', finalMatch.winner_id, now, tournamentId]
       );
+    }
+  }
+
+  async suggestNextKingOfCourtMatch(tournamentId: string, completedMatchId: string, winnerId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Get all bracket matches and participants for this tournament
+    const bracketMatches = await this.getTournamentBracket(tournamentId);
+    const participants = await this.getTournamentParticipants(tournamentId);
+
+    // Use bracket generator to suggest next match
+    const suggestedMatch = BracketGenerator.suggestNextKingOfCourtMatch(
+      bracketMatches,
+      participants,
+      completedMatchId
+    );
+
+    if (suggestedMatch) {
+      const now = new Date().toISOString();
+
+      // Add the suggested match to the database
+      await this.db.runAsync(
+        `INSERT INTO tournament_matches (
+          id, tournament_id, round_number, match_number,
+          player1_id, player2_id, player1_name, player2_name,
+          status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          this.generateId(),
+          tournamentId,
+          suggestedMatch.round,
+          suggestedMatch.matchNumber,
+          suggestedMatch.player1Id,
+          suggestedMatch.player2Id,
+          suggestedMatch.player1Name,
+          suggestedMatch.player2Name,
+          suggestedMatch.status,
+          now,
+          now
+        ]
+      );
+
+      console.log(`Next King of Court match suggested: ${suggestedMatch.player1Name} vs ${suggestedMatch.player2Name}`);
     }
   }
 
