@@ -367,7 +367,7 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
             Number of times each {isDoubles ? 'team' : 'player'} plays each other
           </Text>
           <View style={styles.roundsContainer}>
-            {[1, 2, 3].map((rounds) => (
+            {[1, 2, 3, 5, 7].map((rounds) => (
               <TouchableOpacity
                 key={rounds}
                 style={[styles.roundButton, roundRobinRounds === rounds && styles.roundButtonActive]}
