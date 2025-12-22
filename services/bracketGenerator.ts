@@ -588,10 +588,10 @@ export class BracketGenerator {
 
   /**
    * Suggest next King of Court match
-   * Winner stays on court, next challenger is selected based on fair rotation:
+   * Winner stays on court, next challenger is selected based on FIFO waiting queue:
    * 1. Players who haven't played yet (highest priority)
-   * 2. Players waiting in rotation (have played but not recently)
-   * 3. Recent loser only gets picked after ALL other players have played
+   * 2. Player who has been waiting longest (FIFO queue)
+   * 3. Recent loser only after ALL other players have had their turn
    */
   static suggestNextKingOfCourtMatch(
     matches: BracketMatch[],
@@ -612,26 +612,34 @@ export class BracketGenerator {
       ? completedMatch.player2Id
       : completedMatch.player1Id;
 
-    // Get standings to analyze play patterns
-    const standings = this.getKingOfCourtStandings(matches, players);
+    // Sort matches by match number to get chronological order
+    const completedMatches = matches
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => a.matchNumber - b.matchNumber);
 
-    // Separate players into groups (excluding current winner)
-    const unplayedPlayers = standings.filter(s =>
-      s.player.id !== completedMatch.winnerId && s.matchesPlayed === 0
+    // Build waiting queue based on when each player last played
+    const playerLastMatchIndex = new Map<string, number>();
+
+    completedMatches.forEach((match, index) => {
+      if (match.player1Id) playerLastMatchIndex.set(match.player1Id, index);
+      if (match.player2Id) playerLastMatchIndex.set(match.player2Id, index);
+    });
+
+    // Separate players into categories
+    const unplayedPlayers = players.filter(p =>
+      p.id !== completedMatch.winnerId && !playerLastMatchIndex.has(p.id)
     );
 
-    const playedPlayersExceptRecentLoser = standings.filter(s =>
-      s.player.id !== completedMatch.winnerId &&
-      s.player.id !== recentLoserId &&
-      s.matchesPlayed > 0
+    const waitingPlayers = players.filter(p =>
+      p.id !== completedMatch.winnerId &&
+      p.id !== recentLoserId &&
+      playerLastMatchIndex.has(p.id)
     );
-
-    const recentLoser = standings.find(s => s.player.id === recentLoserId);
 
     // Priority 1: Players who haven't played yet
     if (unplayedPlayers.length > 0) {
       // Randomly pick one if multiple unplayed players
-      const challenger = unplayedPlayers[Math.floor(Math.random() * unplayedPlayers.length)].player;
+      const challenger = unplayedPlayers[Math.floor(Math.random() * unplayedPlayers.length)];
 
       const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
       return {
@@ -646,17 +654,17 @@ export class BracketGenerator {
       };
     }
 
-    // Priority 2: Players in waiting rotation (played before, but not the recent loser)
-    if (playedPlayersExceptRecentLoser.length > 0) {
-      // Sort by matches played (ascending) for fair rotation
-      playedPlayersExceptRecentLoser.sort((a, b) => a.matchesPlayed - b.matchesPlayed);
+    // Priority 2: Player who has been waiting longest (FIFO queue)
+    if (waitingPlayers.length > 0) {
+      // Sort by last match index (ascending) - oldest match = been waiting longest
+      waitingPlayers.sort((a, b) => {
+        const aLastMatch = playerLastMatchIndex.get(a.id) ?? -1;
+        const bLastMatch = playerLastMatchIndex.get(b.id) ?? -1;
+        return aLastMatch - bLastMatch;
+      });
 
-      // Get player(s) who have played least
-      const minPlayed = playedPlayersExceptRecentLoser[0].matchesPlayed;
-      const leastPlayedPlayers = playedPlayersExceptRecentLoser.filter(p => p.matchesPlayed === minPlayed);
-
-      // Randomly select among those with least plays
-      const challenger = leastPlayedPlayers[Math.floor(Math.random() * leastPlayedPlayers.length)].player;
+      // Select the player who has been waiting the longest
+      const challenger = waitingPlayers[0];
 
       const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
       return {
@@ -672,14 +680,15 @@ export class BracketGenerator {
     }
 
     // Priority 3: Recent loser (only when no other players available)
+    const recentLoser = players.find(p => p.id === recentLoserId);
     if (recentLoser) {
       const nextMatchNumber = Math.max(...matches.map(m => m.matchNumber), 0) + 1;
       return {
         id: `match_${nextMatchNumber}`,
         player1Id: winner.id,
-        player2Id: recentLoser.player.id,
+        player2Id: recentLoser.id,
         player1Name: winner.name,
-        player2Name: recentLoser.player.name,
+        player2Name: recentLoser.name,
         round: 1,
         matchNumber: nextMatchNumber,
         status: 'scheduled',
