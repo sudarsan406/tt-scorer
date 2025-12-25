@@ -188,9 +188,9 @@ export class BracketGenerator {
   }
 
   /**
-   * Generate Round Robin schedule with playoffs (supports multiple rounds)
+   * Generate Round Robin schedule with optional playoffs (supports multiple rounds)
    */
-  static generateRoundRobin(players: Player[], rounds: number = 1): BracketMatch[] {
+  static generateRoundRobin(players: Player[], rounds: number = 1, hasPlayoffs?: boolean): BracketMatch[] {
     const playerCount = players.length;
 
     if (playerCount < 3) {
@@ -221,7 +221,16 @@ export class BracketGenerator {
         }
       }
     }
-    
+
+    // Determine if we should add playoffs
+    // If hasPlayoffs is undefined, use smart defaults based on player count
+    const shouldHavePlayoffs = hasPlayoffs ?? (playerCount === 4 || playerCount >= 6);
+
+    if (!shouldHavePlayoffs) {
+      // No playoffs - group stage winner is tournament champion
+      return matches;
+    }
+
     // Add playoff matches based on player count
     // Playoffs start after all group stage rounds
     const playoffRoundStart = rounds + 1;
@@ -277,15 +286,26 @@ export class BracketGenerator {
       // Set next match references
       semi1.nextMatchId = final.id;
       semi2.nextMatchId = final.id;
+    } else {
+      // For 3 or 5 players with playoffs enabled, create top 2 final
+      const final: BracketMatch = {
+        id: `match_${currentMatchId}`,
+        round: playoffRoundStart,
+        matchNumber: 1,
+        status: 'scheduled',
+        parentMatch1Id: 'group_stage',
+        parentMatch2Id: 'group_stage',
+      };
+      matches.push(final);
     }
-    
+
     return matches;
   }
 
   /**
-   * Generate Round Robin schedule for doubles with playoffs
+   * Generate Round Robin schedule for doubles with optional playoffs
    */
-  static generateRoundRobinDoubles(teams: DoublesTeam[], rounds: number = 1): BracketMatch[] {
+  static generateRoundRobinDoubles(teams: DoublesTeam[], rounds: number = 1, hasPlayoffs?: boolean): BracketMatch[] {
     const teamCount = teams.length;
 
     if (teamCount < 3) {
@@ -321,6 +341,14 @@ export class BracketGenerator {
           currentMatchId++;
         }
       }
+    }
+
+    // Determine if we should add playoffs
+    const shouldHavePlayoffs = hasPlayoffs ?? (teamCount === 4 || teamCount >= 6);
+
+    if (!shouldHavePlayoffs) {
+      // No playoffs - group stage winner is tournament champion
+      return matches;
     }
 
     // Add playoff matches based on team count
@@ -373,6 +401,17 @@ export class BracketGenerator {
 
       semi1.nextMatchId = final.id;
       semi2.nextMatchId = final.id;
+    } else {
+      // For 3 or 5 teams with playoffs enabled, create top 2 final
+      const final: BracketMatch = {
+        id: `match_${currentMatchId}`,
+        round: playoffRoundStart,
+        matchNumber: 1,
+        status: 'scheduled',
+        parentMatch1Id: 'group_stage',
+        parentMatch2Id: 'group_stage',
+      };
+      matches.push(final);
     }
 
     return matches;

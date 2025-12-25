@@ -25,12 +25,25 @@ interface TournamentBracketScreenProps {
   navigation: any;
 }
 
+interface Standing {
+  player: any;
+  position: number;
+  matchWins: number;
+  matchLosses: number;
+  setWins: number;
+  setLosses: number;
+  setDifference: number;
+  winPercentage: number;
+}
+
 export default function TournamentBracketScreen({ route, navigation }: TournamentBracketScreenProps) {
   const { tournamentId } = route.params;
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const [bracketMatches, setBracketMatches] = useState<BracketMatch[]>([]);
+  const [standings, setStandings] = useState<Standing[]>([]);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'bracket' | 'standings'>('bracket');
 
   useEffect(() => {
     loadTournamentData();
@@ -47,15 +60,23 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
     try {
       const tournaments = await databaseService.getTournaments();
       const tournamentData = tournaments.find(t => t.id === tournamentId);
-      
+
       if (tournamentData) {
         setTournament(tournamentData);
         navigation.setOptions({
           title: `${tournamentData.name} - Bracket`,
         });
-        
+
         const bracket = await databaseService.getTournamentBracket(tournamentId);
         setBracketMatches(bracket);
+
+        // Load standings
+        try {
+          const tournamentStandings = await databaseService.getTournamentStandings(tournamentId);
+          setStandings(tournamentStandings);
+        } catch (error) {
+          console.warn('Failed to load standings:', error);
+        }
       } else {
         Alert.alert('Error', 'Tournament not found', [
           { text: 'OK', onPress: () => navigation.goBack() }
@@ -245,17 +266,17 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
 
   const renderSingleEliminationBracket = () => {
     const rounds = Array.from(new Set(bracketMatches.map(m => m.round))).sort();
-    
+
     return (
-      <ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={true} 
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={true}
         style={styles.bracketContainer}
         contentContainerStyle={styles.bracketContent}
       >
         {rounds.map(roundNumber => {
           const roundMatches = bracketMatches.filter(m => m.round === roundNumber);
-          
+
           return (
             <View key={roundNumber} style={styles.roundColumn}>
               <Text style={styles.roundTitle}>
@@ -274,6 +295,111 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
           );
         })}
       </ScrollView>
+    );
+  };
+
+  const [showStandingsInfo, setShowStandingsInfo] = useState(false);
+
+  const renderStandings = () => {
+    if (standings.length === 0) {
+      return (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="podium-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyText}>No standings available yet</Text>
+          <Text style={styles.emptySubtext}>Complete some matches to see standings</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.standingsContainer}>
+        <View style={styles.standingsHeaderRow}>
+          <Text style={styles.standingsTitle}>Standings</Text>
+          <TouchableOpacity
+            style={styles.infoButton}
+            onPress={() => setShowStandingsInfo(!showStandingsInfo)}
+          >
+            <Ionicons name="information-circle-outline" size={24} color="#2196F3" />
+          </TouchableOpacity>
+        </View>
+
+        {showStandingsInfo && (
+          <View style={styles.infoBox}>
+            <Text style={styles.infoTitle}>How Standings Are Calculated:</Text>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoNumber}>1.</Text>
+              <Text style={styles.infoText}>
+                <Text style={styles.infoBold}>Match Wins</Text> (Primary ranking)
+              </Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoNumber}>2.</Text>
+              <Text style={styles.infoText}>
+                <Text style={styles.infoBold}>Set Difference</Text> (Tiebreaker #1)
+              </Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoNumber}>3.</Text>
+              <Text style={styles.infoText}>
+                <Text style={styles.infoBold}>Win Percentage</Text> (Tiebreaker #2)
+              </Text>
+            </View>
+            <Text style={styles.infoExample}>
+              Example: A player with 5-1 (5 wins, 1 loss) beats a player with 4-2,
+              even if the 4-2 player has better set difference.
+            </Text>
+          </View>
+        )}
+
+        <View style={styles.standingsHeader}>
+          <Text style={[styles.standingsHeaderText, styles.positionColumn]}>#</Text>
+          <Text style={[styles.standingsHeaderText, styles.nameColumn]}>Player</Text>
+          <Text style={[styles.standingsHeaderText, styles.statsColumn]}>W-L</Text>
+          <Text style={[styles.standingsHeaderText, styles.statsColumn]}>Sets</Text>
+          <Text style={[styles.standingsHeaderText, styles.statsColumn]}>Win %</Text>
+        </View>
+
+        {standings.map((standing) => (
+          <View
+            key={standing.player.id}
+            style={[
+              styles.standingRow,
+              standing.position === 1 && styles.firstPlace,
+              standing.position === 2 && styles.secondPlace,
+              standing.position === 3 && styles.thirdPlace,
+            ]}
+          >
+            <View style={styles.positionColumn}>
+              {standing.position <= 3 ? (
+                <Ionicons
+                  name="trophy"
+                  size={20}
+                  color={
+                    standing.position === 1 ? '#FFD700' :
+                    standing.position === 2 ? '#C0C0C0' :
+                    '#CD7F32'
+                  }
+                />
+              ) : (
+                <Text style={styles.positionText}>{standing.position}</Text>
+              )}
+            </View>
+            <Text style={[styles.standingText, styles.nameColumn]}>{standing.player.name}</Text>
+            <Text style={[styles.standingText, styles.statsColumn]}>
+              {standing.matchWins}-{standing.matchLosses}
+            </Text>
+            <Text style={[styles.standingText, styles.statsColumn]}>
+              {standing.setWins}-{standing.setLosses}
+              <Text style={styles.setDifferenceText}>
+                {' '}({standing.setDifference >= 0 ? '+' : ''}{standing.setDifference})
+              </Text>
+            </Text>
+            <Text style={[styles.standingText, styles.statsColumn]}>
+              {standing.winPercentage.toFixed(0)}%
+            </Text>
+          </View>
+        ))}
+      </View>
     );
   };
 
@@ -301,7 +427,8 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
         <View style={styles.headerMain}>
           <Text style={styles.tournamentTitle}>{tournament.name}</Text>
           <Text style={styles.formatText}>
-            {tournament.format === 'single_elimination' ? 'Single Elimination' : 'Round Robin'}
+            {tournament.format === 'single_elimination' ? 'Single Elimination' :
+             tournament.format === 'round_robin' ? 'Round Robin' : 'King of Court'}
           </Text>
           <View style={styles.headerButtons}>
             {tournament.status === 'completed' && (
@@ -327,14 +454,46 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
             </TouchableOpacity>
           </View>
         </View>
+      </View>
 
+      {/* Tabs */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'bracket' && styles.activeTab]}
+          onPress={() => setActiveTab('bracket')}
+        >
+          <Ionicons
+            name="git-network-outline"
+            size={20}
+            color={activeTab === 'bracket' ? '#2196F3' : '#666'}
+          />
+          <Text style={[styles.tabText, activeTab === 'bracket' && styles.activeTabText]}>
+            Bracket
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'standings' && styles.activeTab]}
+          onPress={() => setActiveTab('standings')}
+        >
+          <Ionicons
+            name="podium-outline"
+            size={20}
+            color={activeTab === 'standings' ? '#2196F3' : '#666'}
+          />
+          <Text style={[styles.tabText, activeTab === 'standings' && styles.activeTabText]}>
+            Standings
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.mainScrollContainer} showsVerticalScrollIndicator={true}>
-        {tournament.format === 'round_robin' ? 
-          renderRoundRobinBracket() : 
-          renderSingleEliminationBracket()
-        }
+        {activeTab === 'bracket' ? (
+          tournament.format === 'round_robin' || tournament.format === 'king_of_court' ?
+            renderRoundRobinBracket() :
+            renderSingleEliminationBracket()
+        ) : (
+          renderStandings()
+        )}
       </ScrollView>
       <FooterNavigation navigation={navigation} />
     </View>
@@ -458,5 +617,182 @@ const styles = StyleSheet.create({
   },
   matchesGrid: {
     gap: 15,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#2196F3',
+  },
+  tabText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: '#2196F3',
+    fontWeight: 'bold',
+  },
+  standingsContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  standingsHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  standingsTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  infoButton: {
+    padding: 4,
+  },
+  infoBox: {
+    backgroundColor: '#E3F2FD',
+    padding: 16,
+    borderRadius: 8,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2196F3',
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1976D2',
+    marginBottom: 12,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    alignItems: 'flex-start',
+  },
+  infoNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#1976D2',
+    width: 20,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+  },
+  infoBold: {
+    fontWeight: 'bold',
+    color: '#1976D2',
+  },
+  infoExample: {
+    fontSize: 13,
+    color: '#555',
+    marginTop: 8,
+    fontStyle: 'italic',
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#BBDEFB',
+  },
+  standingsHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#2196F3',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 8,
+  },
+  standingsHeaderText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+    textAlign: 'center',
+  },
+  standingRow: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginBottom: 4,
+    borderRadius: 8,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  firstPlace: {
+    backgroundColor: '#FFF9E6',
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFD700',
+  },
+  secondPlace: {
+    backgroundColor: '#F5F5F5',
+    borderLeftWidth: 4,
+    borderLeftColor: '#C0C0C0',
+  },
+  thirdPlace: {
+    backgroundColor: '#FFF5F0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#CD7F32',
+  },
+  positionColumn: {
+    width: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  positionText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#666',
+  },
+  nameColumn: {
+    flex: 2,
+    paddingHorizontal: 8,
+  },
+  statsColumn: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  standingText: {
+    fontSize: 13,
+    color: '#333',
+  },
+  setDifferenceText: {
+    fontSize: 11,
+    color: '#666',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
   },
 });

@@ -208,8 +208,60 @@ export class ExportService {
         throw new Error('No bracket data to export');
       }
 
-      // CSV Header
-      let csvContent = 'Round,Match #,Player 1,Player 2,Score,Winner,Status\n';
+      // Fetch detailed set scores for completed matches
+      const detailedScores = new Map<string, string>();
+      for (const match of bracket) {
+        if (match.linkedMatchId && match.status === 'completed') {
+          try {
+            const sets = await databaseService.getMatchSets(match.linkedMatchId);
+            const setScoresStr = sets
+              .map(set => `${set.player1Score}-${set.player2Score}`)
+              .join(', ');
+            if (setScoresStr) {
+              detailedScores.set(match.id, setScoresStr);
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch sets for match ${match.linkedMatchId}:`, error);
+          }
+        }
+      }
+
+      // Fetch standings for Round Robin and King of Court tournaments
+      let standings: any[] = [];
+      if (tournament.format === 'round_robin' || tournament.format === 'king_of_court') {
+        try {
+          standings = await databaseService.getTournamentStandings(tournamentId);
+        } catch (error) {
+          console.warn('Failed to fetch standings:', error);
+        }
+      }
+
+      // CSV Header - Tournament Info
+      let csvContent = 'TOURNAMENT DETAILS\n';
+      csvContent += `Name,${tournament.name}\n`;
+      csvContent += `Format,${tournament.format === 'single_elimination' ? 'Single Elimination' : tournament.format === 'round_robin' ? 'Round Robin' : 'King of Court'}\n`;
+      csvContent += `Status,${tournament.status.charAt(0).toUpperCase() + tournament.status.slice(1)}\n`;
+      csvContent += `Participants,${tournament.participants.length}\n`;
+      csvContent += '\n';
+
+      // Standings Section (for Round Robin and King of Court)
+      if (standings.length > 0) {
+        csvContent += 'STANDINGS\n';
+        csvContent += 'Pos,Player/Team,Record (W-L),Sets,Win %\n';
+
+        for (const standing of standings) {
+          const playerName = standing.player.name;
+          const escapedName = playerName.includes(',') ? `"${playerName}"` : playerName;
+          const record = `${standing.matchWins}-${standing.matchLosses}`;
+          const sets = `${standing.setWins}-${standing.setLosses} (${standing.setDifference >= 0 ? '+' : ''}${standing.setDifference})`;
+          csvContent += `${standing.position},${escapedName},${record},${sets},${standing.winPercentage.toFixed(0)}%\n`;
+        }
+        csvContent += '\n';
+      }
+
+      // Matches Section
+      csvContent += 'MATCHES\n';
+      csvContent += 'Round,Player 1,Player 2,Result,Winner\n';
 
       // CSV Rows - organized by round
       const rounds = [...new Set(bracket.map(m => m.round))].sort((a, b) => a - b);
@@ -220,18 +272,47 @@ export class ExportService {
         for (const match of roundMatches) {
           const player1 = match.team1Name || match.player1Name || 'TBD';
           const player2 = match.team2Name || match.player2Name || 'TBD';
-          const score = match.status === 'completed'
-            ? `${match.player1Sets}-${match.player2Sets}`
-            : '-';
-          const winner = match.winnerId ? (match.team1Name || match.player1Name || 'TBD') : '-';
-          const status = match.status.charAt(0).toUpperCase() + match.status.slice(1);
 
-          // Escape commas in names
+          // Build result string with detailed scores if available
+          let result = '-';
+          if (match.status === 'completed') {
+            const setScores = detailedScores.get(match.id);
+            if (setScores) {
+              // Show detailed scores: "2-1 (11-9, 8-11, 11-7)"
+              result = `${match.player1Sets || 0}-${match.player2Sets || 0} (${setScores})`;
+            } else {
+              // Show just set score: "2-1"
+              result = `${match.player1Sets || 0}-${match.player2Sets || 0}`;
+            }
+          }
+
+          // Determine the correct winner name
+          let winner = '-';
+          if (match.winnerId) {
+            // For doubles, check team names first
+            if (match.team1Name || match.team2Name) {
+              if (match.winnerId === match.player1Id || match.winnerId === match.player3Id) {
+                winner = match.team1Name || 'Team 1';
+              } else if (match.winnerId === match.player2Id || match.winnerId === match.player4Id) {
+                winner = match.team2Name || 'Team 2';
+              }
+            } else {
+              // For singles, check which player won
+              if (match.winnerId === match.player1Id) {
+                winner = match.player1Name || 'TBD';
+              } else if (match.winnerId === match.player2Id) {
+                winner = match.player2Name || 'TBD';
+              }
+            }
+          }
+
+          // Escape commas in names and result
           const escapedPlayer1 = player1.includes(',') ? `"${player1}"` : player1;
           const escapedPlayer2 = player2.includes(',') ? `"${player2}"` : player2;
           const escapedWinner = winner.includes(',') ? `"${winner}"` : winner;
+          const escapedResult = result.includes(',') ? `"${result}"` : result;
 
-          csvContent += `Round ${round},${match.matchNumber},${escapedPlayer1},${escapedPlayer2},${score},${escapedWinner},${status}\n`;
+          csvContent += `Round ${round},${escapedPlayer1},${escapedPlayer2},${escapedResult},${escapedWinner}\n`;
         }
       }
 

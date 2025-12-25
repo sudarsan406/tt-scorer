@@ -210,7 +210,7 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
       <View key={playerStats.player.id} style={styles.playerCard}>
         <TouchableOpacity
           style={styles.playerCardHeader}
-          onPress={() => togglePlayerExpansion(playerStats.player.id)}
+          onPress={() => playerStats.player && togglePlayerExpansion(playerStats.player.id)}
         >
           <View style={styles.rankBadge}>
             <Text style={styles.rankText}>{index + 1}</Text>

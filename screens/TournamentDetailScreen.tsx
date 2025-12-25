@@ -242,7 +242,7 @@ export default function TournamentDetailScreen({ route, navigation }: Tournament
 
     setExporting(true);
     try {
-      await ExportService.exportTournamentBracket(tournament.id, tournament.name);
+      await ExportService.exportTournamentToCSV(tournament.id);
       Alert.alert(
         'Success',
         'Tournament bracket exported successfully!',

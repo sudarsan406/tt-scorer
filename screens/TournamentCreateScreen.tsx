@@ -34,12 +34,27 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
   const [doublesTeams, setDoublesTeams] = useState<DoublesTeam[]>([]);
   const [roundRobinRounds, setRoundRobinRounds] = useState(1);
   const [kingOfCourtWins, setKingOfCourtWins] = useState(3);
+  const [hasPlayoffs, setHasPlayoffs] = useState<boolean | undefined>(undefined);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     loadPlayers();
   }, []);
+
+  // Auto-set smart default for hasPlayoffs when format or player count changes
+  useEffect(() => {
+    if (format === 'round_robin') {
+      const playerCount = isDoubles ? doublesTeams.length : selectedPlayers.length;
+      if (playerCount > 0) {
+        // Smart default: playoffs for 4 & 6+ players
+        const defaultHasPlayoffs = playerCount === 4 || playerCount >= 6;
+        if (hasPlayoffs === undefined) {
+          setHasPlayoffs(defaultHasPlayoffs);
+        }
+      }
+    }
+  }, [format, selectedPlayers.length, doublesTeams.length, isDoubles]);
 
   const loadPlayers = async () => {
     try {
@@ -159,6 +174,7 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
         isDoubles,
         roundRobinRounds,
         kingOfCourtWins,
+        hasPlayoffs,
       });
 
       // Get all unique players from teams or selected players
@@ -173,7 +189,8 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
         selectedPlayers,
         isDoubles,
         isDoubles ? doublesTeams : undefined,
-        roundRobinRounds
+        roundRobinRounds,
+        hasPlayoffs
       );
       
       
@@ -380,25 +397,59 @@ export default function TournamentCreateScreen({ navigation }: TournamentCreateS
       </View>
 
       {format === 'round_robin' && (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Round Robin Rounds</Text>
-          <Text style={styles.formatNote}>
-            Number of times each {isDoubles ? 'team' : 'player'} plays each other
-          </Text>
-          <View style={styles.roundsContainer}>
-            {[1, 2, 3, 5, 7].map((rounds) => (
+        <>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Round Robin Rounds</Text>
+            <Text style={styles.formatNote}>
+              Number of times each {isDoubles ? 'team' : 'player'} plays each other
+            </Text>
+            <View style={styles.roundsContainer}>
+              {[1, 2, 3, 5, 7].map((rounds) => (
+                <TouchableOpacity
+                  key={rounds}
+                  style={[styles.roundButton, roundRobinRounds === rounds && styles.roundButtonActive]}
+                  onPress={() => setRoundRobinRounds(rounds)}
+                >
+                  <Text style={[styles.roundButtonText, roundRobinRounds === rounds && styles.roundButtonTextActive]}>
+                    {rounds} {rounds === 1 ? 'Round' : 'Rounds'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.playoffsHeader}>
+              <Text style={styles.sectionTitle}>Playoffs</Text>
               <TouchableOpacity
-                key={rounds}
-                style={[styles.roundButton, roundRobinRounds === rounds && styles.roundButtonActive]}
-                onPress={() => setRoundRobinRounds(rounds)}
+                style={[styles.playoffsToggle, hasPlayoffs && styles.playoffsToggleActive]}
+                onPress={() => setHasPlayoffs(!hasPlayoffs)}
               >
-                <Text style={[styles.roundButtonText, roundRobinRounds === rounds && styles.roundButtonTextActive]}>
-                  {rounds} {rounds === 1 ? 'Round' : 'Rounds'}
+                <Ionicons
+                  name={hasPlayoffs ? 'checkbox' : 'square-outline'}
+                  size={24}
+                  color={hasPlayoffs ? '#2196F3' : '#999'}
+                />
+                <Text style={[styles.playoffsToggleText, hasPlayoffs && styles.playoffsToggleTextActive]}>
+                  Include Playoffs
                 </Text>
               </TouchableOpacity>
-            ))}
+            </View>
+            <Text style={styles.formatNote}>
+              {hasPlayoffs ? (
+                (() => {
+                  const playerCount = isDoubles ? doublesTeams.length : selectedPlayers.length;
+                  if (playerCount === 4) return 'Top 2 advance to final';
+                  if (playerCount >= 6) return 'Top 4 advance to semifinals and final';
+                  if (playerCount >= 3) return 'Top 2 advance to final';
+                  return 'Top players advance to elimination rounds';
+                })()
+              ) : (
+                'Group stage only - highest ranked player/team wins tournament'
+              )}
+            </Text>
           </View>
-        </View>
+        </>
       )}
 
       {format === 'king_of_court' && (
@@ -897,5 +948,30 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginLeft: 8,
+  },
+  playoffsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  playoffsToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 8,
+    borderRadius: 8,
+  },
+  playoffsToggleActive: {
+    backgroundColor: '#E3F2FD',
+  },
+  playoffsToggleText: {
+    fontSize: 16,
+    color: '#999',
+    fontWeight: '500',
+  },
+  playoffsToggleTextActive: {
+    color: '#2196F3',
+    fontWeight: 'bold',
   },
 });

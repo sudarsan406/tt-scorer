@@ -89,6 +89,7 @@ export interface Tournament {
   isDoubles?: boolean; // Support for doubles tournaments
   roundRobinRounds?: number; // Number of times each player/team plays each other (default: 1)
   kingOfCourtWins?: number; // Number of wins needed to claim a "game" (default: 3)
+  hasPlayoffs?: boolean; // For round robin: whether to include playoff bracket (default: auto-decide based on player count)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -109,6 +110,7 @@ export interface PlayerStatistics {
   streakType: 'win' | 'loss' | 'none';
   recentMatches: RecentMatch[];
   period?: string;
+  eloRating?: number; // Current Elo rating from player profile
 }
 
 export interface RecentMatch {

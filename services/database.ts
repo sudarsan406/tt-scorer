@@ -109,6 +109,13 @@ class DatabaseService {
       // Column might already exist, ignore error
     }
 
+    // Add hasPlayoffs column to tournaments table
+    try {
+      await this.db.execAsync(`ALTER TABLE tournaments ADD COLUMN has_playoffs BOOLEAN DEFAULT NULL`);
+    } catch (error) {
+      // Column might already exist, ignore error
+    }
+
     // Add doubles support columns to tournament_matches table
     try {
       await this.db.execAsync(`ALTER TABLE tournament_matches ADD COLUMN player3_id TEXT`);
@@ -660,11 +667,11 @@ class DatabaseService {
     const now = new Date().toISOString();
 
     await this.db.runAsync(
-      `INSERT INTO tournaments (id, name, description, start_date, end_date, status, format, best_of, is_doubles, round_robin_rounds, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tournaments (id, name, description, start_date, end_date, status, format, best_of, is_doubles, round_robin_rounds, has_playoffs, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, tournament.name, tournament.description || null, tournament.startDate.toISOString(),
        tournament.endDate?.toISOString() || null, tournament.status, tournament.format, tournament.bestOf || 3,
-       tournament.isDoubles || false, tournament.roundRobinRounds || 1, now, now]
+       tournament.isDoubles || false, tournament.roundRobinRounds || 1, tournament.hasPlayoffs ?? null, now, now]
     );
 
     return id;
@@ -685,21 +692,24 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     try {
+      // IMPORTANT: Check if any matches were completed
+      // We cannot delete tournaments with completed matches because Elo ratings have already been affected
+      const completedMatchesResult = await this.db.getFirstAsync(
+        `SELECT COUNT(*) as count FROM tournament_matches
+         WHERE tournament_id = ? AND status = 'completed'`,
+        [tournamentId]
+      ) as { count: number } | null;
+
+      if (completedMatchesResult && completedMatchesResult.count > 0) {
+        throw new Error(
+          `Cannot delete tournament with ${completedMatchesResult.count} completed match${completedMatchesResult.count > 1 ? 'es' : ''}. ` +
+          'Player Elo ratings have already been affected by these matches. ' +
+          'Only tournaments with no completed matches can be deleted.'
+        );
+      }
+
       // Delete in order to handle foreign key constraints
-      // 1. Delete tournament matches (bracket matches)
-      await this.db.runAsync(
-        `DELETE FROM tournament_matches WHERE tournament_id = ?`,
-        [tournamentId]
-      );
-
-      // 2. Delete tournament participants
-      await this.db.runAsync(
-        `DELETE FROM tournament_participants WHERE tournament_id = ?`,
-        [tournamentId]
-      );
-
-      // 3. Delete any regular matches associated with this tournament
-      // First, get all match IDs linked to this tournament
+      // 1. First, get all match IDs linked to this tournament (only uncompleted ones at this point)
       const tournamentMatches = await this.db.getAllAsync(
         `SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND match_id IS NOT NULL`,
         [tournamentId]
@@ -721,6 +731,18 @@ class DatabaseService {
         }
       }
 
+      // 2. Delete tournament matches (bracket matches)
+      await this.db.runAsync(
+        `DELETE FROM tournament_matches WHERE tournament_id = ?`,
+        [tournamentId]
+      );
+
+      // 3. Delete tournament participants
+      await this.db.runAsync(
+        `DELETE FROM tournament_participants WHERE tournament_id = ?`,
+        [tournamentId]
+      );
+
       // 4. Finally, delete the tournament itself
       await this.db.runAsync(
         `DELETE FROM tournaments WHERE id = ?`,
@@ -729,7 +751,8 @@ class DatabaseService {
 
     } catch (error) {
       console.error('Failed to delete tournament:', error);
-      throw new Error('Failed to delete tournament and its associated data');
+      // Re-throw the error to preserve the original error message
+      throw error instanceof Error ? error : new Error('Failed to delete tournament and its associated data');
     }
   }
 
@@ -755,7 +778,8 @@ class DatabaseService {
     players: Player[],
     isDoubles: boolean = false,
     doublesTeams?: Array<{ player1: Player; player2: Player; teamName?: string }>,
-    roundRobinRounds: number = 1
+    roundRobinRounds: number = 1,
+    hasPlayoffs?: boolean
   ): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
@@ -769,9 +793,9 @@ class DatabaseService {
       }
     } else if (format === 'round_robin') {
       if (isDoubles && doublesTeams) {
-        bracketMatches = BracketGenerator.generateRoundRobinDoubles(doublesTeams, roundRobinRounds);
+        bracketMatches = BracketGenerator.generateRoundRobinDoubles(doublesTeams, roundRobinRounds, hasPlayoffs);
       } else {
-        bracketMatches = BracketGenerator.generateRoundRobin(players, roundRobinRounds);
+        bracketMatches = BracketGenerator.generateRoundRobin(players, roundRobinRounds, hasPlayoffs);
       }
     } else if (format === 'king_of_court') {
       if (isDoubles && doublesTeams) {
@@ -858,6 +882,7 @@ class DatabaseService {
         bestOf: row.best_of || 3,
         isDoubles: row.is_doubles || false,
         roundRobinRounds: row.round_robin_rounds || 1,
+        hasPlayoffs: row.has_playoffs ?? undefined,
         winnerId: row.winner_id,
         participants,
         matches,
@@ -1423,12 +1448,19 @@ class DatabaseService {
         const stats = await this.getPlayerStatistics(player.id, period);
         allStats.push({
           ...stats,
-          player
+          player,
+          eloRating: player.rating || 1200 // Include current Elo rating from player profile
         });
       }
 
-      // Sort by win percentage, then by total matches
+      // Sort by Elo rating (highest first), then by win percentage, then by total matches
       return allStats.sort((a, b) => {
+        const aRating = a.eloRating || 1200;
+        const bRating = b.eloRating || 1200;
+
+        if (aRating !== bRating) {
+          return bRating - aRating; // Higher rating first
+        }
         if (a.winPercentage !== b.winPercentage) {
           return b.winPercentage - a.winPercentage;
         }
@@ -1682,6 +1714,186 @@ class DatabaseService {
       console.error('Error fetching win/loss trends:', error);
       return [];
     }
+  }
+
+  async getTournamentStandings(tournamentId: string): Promise<Array<{
+    player: Player;
+    position: number;
+    matchWins: number;
+    matchLosses: number;
+    setWins: number;
+    setLosses: number;
+    setDifference: number;
+    winPercentage: number;
+  }>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const tournaments = await this.getTournaments();
+    const tournament = tournaments.find(t => t.id === tournamentId);
+
+    if (!tournament) {
+      throw new Error('Tournament not found');
+    }
+
+    const bracket = await this.getTournamentBracket(tournamentId);
+    const participants = await this.getTournamentParticipants(tournamentId);
+
+    if (tournament.format === 'round_robin') {
+      const standings = BracketGenerator.getRoundRobinStandings(
+        bracket,
+        participants,
+        tournament.roundRobinRounds || 1
+      );
+      return standings.map((s, i) => ({ ...s, position: i + 1 }));
+    } else if (tournament.format === 'king_of_court') {
+      return this.getKingOfCourtStandings(bracket, participants);
+    } else {
+      // For single elimination, show progress
+      return this.getSingleEliminationProgress(bracket, participants);
+    }
+  }
+
+  private getKingOfCourtStandings(matches: BracketMatch[], players: Player[]): Array<{
+    player: Player;
+    position: number;
+    matchWins: number;
+    matchLosses: number;
+    setWins: number;
+    setLosses: number;
+    setDifference: number;
+    winPercentage: number;
+  }> {
+    const standings = players.map(player => ({
+      player,
+      position: 0,
+      matchWins: 0,
+      matchLosses: 0,
+      setWins: 0,
+      setLosses: 0,
+      setDifference: 0,
+      winPercentage: 0,
+    }));
+
+    // Count wins and losses for each player
+    matches.filter(m => m.status === 'completed').forEach(match => {
+      const player1Standing = standings.find(s => s.player.id === match.player1Id);
+      const player2Standing = standings.find(s => s.player.id === match.player2Id);
+
+      if (player1Standing && player2Standing) {
+        const player1Sets = match.player1Sets || 0;
+        const player2Sets = match.player2Sets || 0;
+
+        player1Standing.setWins += player1Sets;
+        player1Standing.setLosses += player2Sets;
+        player2Standing.setWins += player2Sets;
+        player2Standing.setLosses += player1Sets;
+
+        if (match.winnerId === match.player1Id) {
+          player1Standing.matchWins++;
+          player2Standing.matchLosses++;
+        } else if (match.winnerId === match.player2Id) {
+          player2Standing.matchWins++;
+          player1Standing.matchLosses++;
+        }
+      }
+    });
+
+    // Calculate set difference and win percentage
+    standings.forEach(standing => {
+      standing.setDifference = standing.setWins - standing.setLosses;
+      const totalMatches = standing.matchWins + standing.matchLosses;
+      standing.winPercentage = totalMatches > 0 ? (standing.matchWins / totalMatches) * 100 : 0;
+    });
+
+    // Sort by wins (descending), then by set difference, then by win percentage
+    standings.sort((a, b) => {
+      if (b.matchWins !== a.matchWins) return b.matchWins - a.matchWins;
+      if (b.setDifference !== a.setDifference) return b.setDifference - a.setDifference;
+      return b.winPercentage - a.winPercentage;
+    });
+
+    // Assign positions
+    standings.forEach((s, i) => {
+      s.position = i + 1;
+    });
+
+    return standings;
+  }
+
+  private getSingleEliminationProgress(matches: BracketMatch[], players: Player[]): Array<{
+    player: Player;
+    position: number;
+    matchWins: number;
+    matchLosses: number;
+    setWins: number;
+    setLosses: number;
+    setDifference: number;
+    winPercentage: number;
+  }> {
+    const standings = players.map(player => ({
+      player,
+      position: 0,
+      matchWins: 0,
+      matchLosses: 0,
+      setWins: 0,
+      setLosses: 0,
+      setDifference: 0,
+      winPercentage: 0,
+    }));
+
+    // For single elimination, track which round each player reached
+    const playerRounds = new Map<string, number>();
+
+    matches.filter(m => m.status === 'completed').forEach(match => {
+      const player1Standing = standings.find(s => s.player.id === match.player1Id);
+      const player2Standing = standings.find(s => s.player.id === match.player2Id);
+
+      if (player1Standing && player2Standing) {
+        const player1Sets = match.player1Sets || 0;
+        const player2Sets = match.player2Sets || 0;
+
+        player1Standing.setWins += player1Sets;
+        player1Standing.setLosses += player2Sets;
+        player2Standing.setWins += player2Sets;
+        player2Standing.setLosses += player1Sets;
+
+        if (match.winnerId === match.player1Id) {
+          player1Standing.matchWins++;
+          player2Standing.matchLosses++;
+          // Winner advances - update their highest round
+          const currentRound = playerRounds.get(match.player1Id!) || 0;
+          playerRounds.set(match.player1Id!, Math.max(currentRound, match.round));
+        } else if (match.winnerId === match.player2Id) {
+          player2Standing.matchWins++;
+          player1Standing.matchLosses++;
+          const currentRound = playerRounds.get(match.player2Id!) || 0;
+          playerRounds.set(match.player2Id!, Math.max(currentRound, match.round));
+        }
+      }
+    });
+
+    // Calculate set difference and win percentage
+    standings.forEach(standing => {
+      standing.setDifference = standing.setWins - standing.setLosses;
+      const totalMatches = standing.matchWins + standing.matchLosses;
+      standing.winPercentage = totalMatches > 0 ? (standing.matchWins / totalMatches) * 100 : 0;
+    });
+
+    // Sort by highest round reached, then by wins
+    standings.sort((a, b) => {
+      const aRound = playerRounds.get(a.player.id) || 0;
+      const bRound = playerRounds.get(b.player.id) || 0;
+      if (bRound !== aRound) return bRound - aRound;
+      if (b.matchWins !== a.matchWins) return b.matchWins - a.matchWins;
+      return b.setDifference - a.setDifference;
+    });
+
+    // Assign positions
+    standings.forEach((s, i) => {
+      s.position = i + 1;
+    });
+
+    return standings;
   }
 
   private generateId(): string {
