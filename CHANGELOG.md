@@ -2,6 +2,14 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.3] - 2025-01-25
+
+### Fixed
+- **Critical: Playoff Finals Player Display**: Fixed issue where playoff final matches showed "TBD vs TBD" even after all group stage matches completed
+  - Player names now properly populate in final matches after group stage completion
+  - Applies to all round robin tournaments with playoffs enabled (singles and doubles)
+  - Works for both new and existing tournaments
+
 ## [1.3.2] - 2025-01-25
 
 ### Fixed
