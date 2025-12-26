@@ -739,14 +739,23 @@ export class BracketGenerator {
 
   /**
    * Get round robin standings with match wins and set difference (supports multiple rounds)
+   * Now includes point difference for ITTF standard tiebreaker
    */
-  static getRoundRobinStandings(matches: BracketMatch[], players: Player[], roundRobinRounds: number = 1): Array<{
+  static getRoundRobinStandings(
+    matches: BracketMatch[],
+    players: Player[],
+    roundRobinRounds: number = 1,
+    matchPointsMap?: Map<string, { player1Points: number; player2Points: number }>
+  ): Array<{
     player: Player;
     matchWins: number;
     matchLosses: number;
     setWins: number;
     setLosses: number;
     setDifference: number;
+    pointsFor: number;
+    pointsAgainst: number;
+    pointDifference: number;
     winPercentage: number;
   }> {
     const standings = players.map(player => ({
@@ -756,6 +765,9 @@ export class BracketGenerator {
       setWins: 0,
       setLosses: 0,
       setDifference: 0,
+      pointsFor: 0,
+      pointsAgainst: 0,
+      pointDifference: 0,
       winPercentage: 0,
     }));
 
@@ -763,17 +775,28 @@ export class BracketGenerator {
     matches.filter(m => m.status === 'completed' && m.round >= 1 && m.round <= roundRobinRounds).forEach(match => {
       const player1Standing = standings.find(s => s.player.id === match.player1Id);
       const player2Standing = standings.find(s => s.player.id === match.player2Id);
-      
+
       if (player1Standing && player2Standing) {
         const player1Sets = match.player1Sets || 0;
         const player2Sets = match.player2Sets || 0;
-        
+
         // Add set wins/losses for both players
         player1Standing.setWins += player1Sets;
         player1Standing.setLosses += player2Sets;
         player2Standing.setWins += player2Sets;
         player2Standing.setLosses += player1Sets;
-        
+
+        // Add point totals if available (from matchPointsMap)
+        if (matchPointsMap && match.linkedMatchId) {
+          const pointsData = matchPointsMap.get(match.linkedMatchId);
+          if (pointsData) {
+            player1Standing.pointsFor += pointsData.player1Points;
+            player1Standing.pointsAgainst += pointsData.player2Points;
+            player2Standing.pointsFor += pointsData.player2Points;
+            player2Standing.pointsAgainst += pointsData.player1Points;
+          }
+        }
+
         // Add match win/loss
         if (match.winnerId === match.player1Id) {
           player1Standing.matchWins++;
@@ -785,20 +808,29 @@ export class BracketGenerator {
       }
     });
 
-    // Calculate set difference and win percentage
+    // Calculate set difference, point difference and win percentage
     standings.forEach(standing => {
       standing.setDifference = standing.setWins - standing.setLosses;
+      standing.pointDifference = standing.pointsFor - standing.pointsAgainst;
       const totalMatches = standing.matchWins + standing.matchLosses;
       standing.winPercentage = totalMatches > 0 ? (standing.matchWins / totalMatches) * 100 : 0;
     });
 
-    // Sort by: 1) Match wins, 2) Set difference, 3) Set wins, 4) Head-to-head
+    // ITTF Standard Tiebreaker Order:
+    // 1) Match wins
+    // 2) Set difference (match points ratio)
+    // 3) Head-to-head (only for 2-way ties)
+    // 4) Point difference (total game points across all sets)
+    // 5) Alphabetical (final fallback)
     return standings.sort((a, b) => {
+      // 1. Match wins (primary)
       if (a.matchWins !== b.matchWins) return b.matchWins - a.matchWins;
-      if (a.setDifference !== b.setDifference) return b.setDifference - a.setDifference;
-      if (a.setWins !== b.setWins) return b.setWins - a.setWins;
 
-      // Head-to-head: Check if these two players played each other
+      // 2. Set difference (sets won - sets lost)
+      if (a.setDifference !== b.setDifference) return b.setDifference - a.setDifference;
+
+      // 3. Head-to-head result (only if exactly 2 players are tied on match wins and set difference)
+      // Check if these two players played each other
       const h2hMatch = matches.find(m =>
         m.status === 'completed' &&
         m.round >= 1 && m.round <= roundRobinRounds &&
@@ -812,7 +844,10 @@ export class BracketGenerator {
         if (h2hMatch.winnerId === b.player.id) return 1;
       }
 
-      // If all else is equal, maintain original order (by player name)
+      // 4. Point difference (total game points for - against, e.g., 11-9, 11-7)
+      if (a.pointDifference !== b.pointDifference) return b.pointDifference - a.pointDifference;
+
+      // 5. Alphabetical (final fallback)
       return a.player.name.localeCompare(b.player.name);
     });
   }

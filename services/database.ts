@@ -1749,6 +1749,9 @@ class DatabaseService {
     setWins: number;
     setLosses: number;
     setDifference: number;
+    pointsFor?: number;
+    pointsAgainst?: number;
+    pointDifference?: number;
     winPercentage: number;
   }>> {
     if (!this.db) throw new Error('Database not initialized');
@@ -1764,10 +1767,27 @@ class DatabaseService {
     const participants = await this.getTournamentParticipants(tournamentId);
 
     if (tournament.format === 'round_robin') {
+      // Fetch point totals for all tournament matches (for ITTF standard tiebreaker)
+      const matchPointsMap = new Map<string, { player1Points: number; player2Points: number }>();
+
+      for (const match of bracket) {
+        if (match.linkedMatchId && match.status === 'completed') {
+          try {
+            const sets = await this.getMatchSets(match.linkedMatchId);
+            const player1Points = sets.reduce((sum, set) => sum + (set.player1Score || 0), 0);
+            const player2Points = sets.reduce((sum, set) => sum + (set.player2Score || 0), 0);
+            matchPointsMap.set(match.linkedMatchId, { player1Points, player2Points });
+          } catch (error) {
+            console.warn(`Could not fetch sets for match ${match.linkedMatchId}:`, error);
+          }
+        }
+      }
+
       const standings = BracketGenerator.getRoundRobinStandings(
         bracket,
         participants,
-        tournament.roundRobinRounds || 1
+        tournament.roundRobinRounds || 1,
+        matchPointsMap
       );
       return standings.map((s, i) => ({ ...s, position: i + 1 }));
     } else if (tournament.format === 'king_of_court') {

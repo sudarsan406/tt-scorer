@@ -374,7 +374,7 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
 
         {showStandingsInfo && (
           <View style={styles.infoBox}>
-            <Text style={styles.infoTitle}>How Standings Are Calculated:</Text>
+            <Text style={styles.infoTitle}>ITTF Standard Tiebreaker Rules:</Text>
             <View style={styles.infoItem}>
               <Text style={styles.infoNumber}>1.</Text>
               <Text style={styles.infoText}>
@@ -384,25 +384,25 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
             <View style={styles.infoItem}>
               <Text style={styles.infoNumber}>2.</Text>
               <Text style={styles.infoText}>
-                <Text style={styles.infoBold}>Set Difference</Text> (Tiebreaker #1)
+                <Text style={styles.infoBold}>Set Difference</Text> (Sets won - Sets lost)
               </Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoNumber}>3.</Text>
               <Text style={styles.infoText}>
-                <Text style={styles.infoBold}>Total Set Wins</Text> (Tiebreaker #2)
+                <Text style={styles.infoBold}>Head-to-Head Result</Text> (If 2 players tied)
               </Text>
             </View>
             <View style={styles.infoItem}>
               <Text style={styles.infoNumber}>4.</Text>
               <Text style={styles.infoText}>
-                <Text style={styles.infoBold}>Head-to-Head Result</Text> (Tiebreaker #3)
+                <Text style={styles.infoBold}>Point Difference</Text> (Total game points)
               </Text>
             </View>
             <Text style={styles.infoExample}>
-              Example: A player with 5-1 beats a player with 4-2,
-              even if the 4-2 player has better set difference. If two players
-              are tied on all stats, the winner of their direct matchup ranks higher.
+              Example: 5-1 beats 4-2 (more match wins). If tied on match wins and
+              set difference, direct matchup decides. If still tied, total game
+              points scored across all sets (e.g., 11-9, 11-7) determines ranking.
             </Text>
           </View>
         )}
