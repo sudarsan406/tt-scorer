@@ -35,12 +35,24 @@ export default function EditMatchScoresModal({
 }: EditMatchScoresModalProps) {
   console.log('EditMatchScoresModal rendered:', { visible, matchId, player1Name, player2Name, setsCount: sets.length, sets });
 
-  const [editedScores, setEditedScores] = useState<{ [key: string]: { player1: string; player2: string } }>({});
+  // Initialize state with sets data immediately
+  const [editedScores, setEditedScores] = useState<{ [key: string]: { player1: string; player2: string } }>(() => {
+    const initialScores: { [key: string]: { player1: string; player2: string } } = {};
+    sets.forEach((set) => {
+      initialScores[set.id] = {
+        player1: set.player1Score.toString(),
+        player2: set.player2Score.toString(),
+      };
+    });
+    console.log('Initial state created:', initialScores);
+    return initialScores;
+  });
   const [saving, setSaving] = useState(false);
 
+  // Update scores when sets change
   React.useEffect(() => {
     console.log('Modal useEffect triggered:', { visible, setsLength: sets.length });
-    if (visible && sets.length > 0) {
+    if (sets.length > 0) {
       const scores: { [key: string]: { player1: string; player2: string } } = {};
       sets.forEach((set) => {
         console.log('Processing set:', set);
@@ -50,11 +62,9 @@ export default function EditMatchScoresModal({
         };
       });
       setEditedScores(scores);
-      console.log('Initialized scores for sets:', sets.length, 'scores:', scores);
-    } else {
-      console.log('Not initializing scores:', { visible, setsLength: sets.length });
+      console.log('Updated scores for sets:', sets.length, 'scores:', scores);
     }
-  }, [visible, sets]);
+  }, [sets]);
 
   const handleScoreChange = (setId: string, player: 'player1' | 'player2', value: string) => {
     console.log('handleScoreChange called:', { setId, player, value });
