@@ -36,36 +36,40 @@ export default function EditMatchScoresModal({
   const [editedScores, setEditedScores] = useState<{ [key: string]: { player1: string; player2: string } }>({});
   const [saving, setSaving] = useState(false);
 
-  const initializeScores = () => {
-    const scores: { [key: string]: { player1: string; player2: string } } = {};
-    sets.forEach((set) => {
-      scores[set.id] = {
-        player1: set.player1Score.toString(),
-        player2: set.player2Score.toString(),
-      };
-    });
-    setEditedScores(scores);
-  };
-
   React.useEffect(() => {
-    if (visible) {
-      initializeScores();
+    if (visible && sets.length > 0) {
+      const scores: { [key: string]: { player1: string; player2: string } } = {};
+      sets.forEach((set) => {
+        scores[set.id] = {
+          player1: set.player1Score.toString(),
+          player2: set.player2Score.toString(),
+        };
+      });
+      setEditedScores(scores);
+      console.log('Initialized scores for sets:', sets.length, 'scores:', scores);
     }
   }, [visible, sets]);
 
   const handleScoreChange = (setId: string, player: 'player1' | 'player2', value: string) => {
-    // Only allow numeric input
-    if (value && !/^\d+$/.test(value)) {
+    console.log('handleScoreChange called:', { setId, player, value });
+
+    // Only allow numeric input or empty string
+    if (value !== '' && !/^\d+$/.test(value)) {
+      console.log('Invalid input, rejecting:', value);
       return;
     }
 
-    setEditedScores((prev) => ({
-      ...prev,
-      [setId]: {
-        ...prev[setId],
-        [player]: value,
-      },
-    }));
+    setEditedScores((prev) => {
+      const newScores = {
+        ...prev,
+        [setId]: {
+          ...prev[setId],
+          [player]: value,
+        },
+      };
+      console.log('Updated scores:', newScores);
+      return newScores;
+    });
   };
 
   const validateScores = (): string | null => {
@@ -204,50 +208,62 @@ export default function EditMatchScoresModal({
             </View>
 
             <View style={styles.setsContainer}>
-              {sets.map((set) => (
-                <View key={set.id} style={styles.setCard}>
-                  <Text style={styles.setTitle}>Set {set.setNumber}</Text>
+              {sets.length === 0 ? (
+                <Text style={styles.noSetsText}>No sets available to edit</Text>
+              ) : (
+                sets.map((set) => {
+                  const p1Value = editedScores[set.id]?.player1 || '';
+                  const p2Value = editedScores[set.id]?.player2 || '';
+                  console.log(`Rendering set ${set.setNumber}, p1: ${p1Value}, p2: ${p2Value}`);
 
-                  <View style={styles.scoreRow}>
-                    <View style={styles.scoreInputContainer}>
-                      <Text style={styles.playerLabel}>{player1Name}</Text>
-                      <TextInput
-                        style={styles.scoreInput}
-                        value={editedScores[set.id]?.player1 || ''}
-                        onChangeText={(value) => handleScoreChange(set.id, 'player1', value)}
-                        keyboardType="number-pad"
-                        maxLength={2}
-                        editable={!saving}
-                      />
-                    </View>
+                  return (
+                    <View key={set.id} style={styles.setCard}>
+                      <Text style={styles.setTitle}>Set {set.setNumber}</Text>
 
-                    <Text style={styles.separator}>-</Text>
+                      <View style={styles.scoreRow}>
+                        <View style={styles.scoreInputContainer}>
+                          <Text style={styles.playerLabel}>{player1Name}</Text>
+                          <TextInput
+                            style={styles.scoreInput}
+                            value={p1Value}
+                            onChangeText={(value) => handleScoreChange(set.id, 'player1', value)}
+                            keyboardType="number-pad"
+                            maxLength={2}
+                            editable={!saving}
+                            placeholder="0"
+                          />
+                        </View>
 
-                    <View style={styles.scoreInputContainer}>
-                      <Text style={styles.playerLabel}>{player2Name}</Text>
-                      <TextInput
-                        style={styles.scoreInput}
-                        value={editedScores[set.id]?.player2 || ''}
-                        onChangeText={(value) => handleScoreChange(set.id, 'player2', value)}
-                        keyboardType="number-pad"
-                        maxLength={2}
-                        editable={!saving}
-                      />
-                    </View>
-                  </View>
+                        <Text style={styles.separator}>-</Text>
 
-                  {editedScores[set.id] &&
-                    (parseInt(editedScores[set.id].player1, 10) !== set.player1Score ||
-                      parseInt(editedScores[set.id].player2, 10) !== set.player2Score) && (
-                      <View style={styles.changedIndicator}>
-                        <Ionicons name="pencil" size={14} color="#FF9800" />
-                        <Text style={styles.changedText}>
-                          Original: {set.player1Score}-{set.player2Score}
-                        </Text>
+                        <View style={styles.scoreInputContainer}>
+                          <Text style={styles.playerLabel}>{player2Name}</Text>
+                          <TextInput
+                            style={styles.scoreInput}
+                            value={p2Value}
+                            onChangeText={(value) => handleScoreChange(set.id, 'player2', value)}
+                            keyboardType="number-pad"
+                            maxLength={2}
+                            editable={!saving}
+                            placeholder="0"
+                          />
+                        </View>
                       </View>
-                    )}
-                </View>
-              ))}
+
+                      {editedScores[set.id] &&
+                        (parseInt(editedScores[set.id].player1, 10) !== set.player1Score ||
+                          parseInt(editedScores[set.id].player2, 10) !== set.player2Score) && (
+                          <View style={styles.changedIndicator}>
+                            <Ionicons name="pencil" size={14} color="#FF9800" />
+                            <Text style={styles.changedText}>
+                              Original: {set.player1Score}-{set.player2Score}
+                            </Text>
+                          </View>
+                        )}
+                    </View>
+                  );
+                })
+              )}
             </View>
 
             <View style={styles.rulesBox}>
@@ -346,6 +362,13 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingTop: 0,
     gap: 12,
+  },
+  noSetsText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    fontStyle: 'italic',
+    padding: 20,
   },
   setCard: {
     backgroundColor: '#f9f9f9',
