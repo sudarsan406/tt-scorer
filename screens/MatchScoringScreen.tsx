@@ -549,6 +549,20 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
             <Text style={styles.modalScore}>
               Final Score: {team1Sets} - {team2Sets}
             </Text>
+
+            {scoreHistory.length > 0 && (
+              <TouchableOpacity
+                style={styles.modalUndoButton}
+                onPress={() => {
+                  setShowCompleteModal(false);
+                  handleUndoPoint();
+                }}
+              >
+                <Ionicons name="arrow-undo" size={20} color="#FF9800" />
+                <Text style={styles.modalUndoButtonText}>Undo Last Point</Text>
+              </TouchableOpacity>
+            )}
+
             <TouchableOpacity
               style={styles.modalButton}
               onPress={handleCompleteMatch}
@@ -759,11 +773,30 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 20,
   },
+  modalUndoButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3E0',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 15,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#FF9800',
+    gap: 8,
+  },
+  modalUndoButtonText: {
+    color: '#FF9800',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
   modalButton: {
     backgroundColor: '#2196F3',
     paddingHorizontal: 30,
     paddingVertical: 15,
     borderRadius: 10,
+    marginTop: 5,
   },
   modalButtonText: {
     color: '#fff',
