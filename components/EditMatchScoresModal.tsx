@@ -225,54 +225,90 @@ export default function EditMatchScoresModal({
 
             {/* Debug info */}
             <View style={{ padding: 16, backgroundColor: '#fff3cd', margin: 16, borderRadius: 8 }}>
+              <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#856404' }}>
+                DEBUG INFO:
+              </Text>
               <Text style={{ fontSize: 12, color: '#856404' }}>
-                Debug: Sets count: {sets.length}, EditedScores keys: {Object.keys(editedScores).length}
+                Sets count: {sets.length}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#856404' }}>
+                EditedScores keys: {Object.keys(editedScores).length}
               </Text>
               <Text style={{ fontSize: 12, color: '#856404' }}>
                 Match ID: {matchId}
               </Text>
+              <Text style={{ fontSize: 12, color: '#856404' }}>
+                Players: {player1Name} vs {player2Name}
+              </Text>
             </View>
 
+            {sets.length === 0 ? (
+              <View style={{ padding: 20, backgroundColor: '#ffebee', margin: 16, borderRadius: 8 }}>
+                <Text style={{ fontSize: 16, color: '#c62828', textAlign: 'center' }}>
+                  No sets available to edit
+                </Text>
+              </View>
+            ) : null}
+
+            {sets.length > 0 ? (
+              <View style={{ padding: 16, backgroundColor: '#e8f5e9', margin: 16, borderRadius: 8 }}>
+                <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#2e7d32' }}>
+                  Found {sets.length} set(s) - rendering inputs below:
+                </Text>
+              </View>
+            ) : null}
+
             <View style={styles.setsContainer}>
-              {sets.length === 0 ? (
-                <Text style={styles.noSetsText}>No sets available to edit</Text>
-              ) : (
-                sets.map((set) => {
+              {sets.map((set) => {
                   const p1Value = editedScores[set.id]?.player1 || '';
                   const p2Value = editedScores[set.id]?.player2 || '';
                   console.log(`Rendering set ${set.setNumber}, p1: ${p1Value}, p2: ${p2Value}`);
 
                   return (
-                    <View key={set.id} style={styles.setCard}>
-                      <Text style={styles.setTitle}>Set {set.setNumber}</Text>
+                    <View key={set.id} style={[styles.setCard, { borderWidth: 2, borderColor: '#2196F3' }]}>
+                      <Text style={[styles.setTitle, { backgroundColor: '#e3f2fd', padding: 8, marginBottom: 16 }]}>
+                        Set {set.setNumber} - EDIT SCORES HERE
+                      </Text>
 
                       <View style={styles.scoreRow}>
                         <View style={styles.scoreInputContainer}>
-                          <Text style={styles.playerLabel}>{player1Name}</Text>
+                          <Text style={[styles.playerLabel, { fontSize: 14, fontWeight: 'bold' }]}>
+                            {player1Name}
+                          </Text>
                           <TextInput
-                            style={styles.scoreInput}
+                            style={[styles.scoreInput, { backgroundColor: '#fff', borderWidth: 3, borderColor: '#2196F3' }]}
                             value={p1Value}
                             onChangeText={(value) => handleScoreChange(set.id, 'player1', value)}
                             keyboardType="number-pad"
                             maxLength={2}
                             editable={!saving}
                             placeholder="0"
+                            placeholderTextColor="#999"
                           />
+                          <Text style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
+                            Current: {p1Value || '0'}
+                          </Text>
                         </View>
 
-                        <Text style={styles.separator}>-</Text>
+                        <Text style={[styles.separator, { fontSize: 32, fontWeight: 'bold' }]}>-</Text>
 
                         <View style={styles.scoreInputContainer}>
-                          <Text style={styles.playerLabel}>{player2Name}</Text>
+                          <Text style={[styles.playerLabel, { fontSize: 14, fontWeight: 'bold' }]}>
+                            {player2Name}
+                          </Text>
                           <TextInput
-                            style={styles.scoreInput}
+                            style={[styles.scoreInput, { backgroundColor: '#fff', borderWidth: 3, borderColor: '#4CAF50' }]}
                             value={p2Value}
                             onChangeText={(value) => handleScoreChange(set.id, 'player2', value)}
                             keyboardType="number-pad"
                             maxLength={2}
                             editable={!saving}
                             placeholder="0"
+                            placeholderTextColor="#999"
                           />
+                          <Text style={{ fontSize: 10, color: '#666', marginTop: 4 }}>
+                            Current: {p2Value || '0'}
+                          </Text>
                         </View>
                       </View>
 
