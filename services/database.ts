@@ -1205,11 +1205,36 @@ class DatabaseService {
     for (const match of updatedMatches) {
       // Check if this is a playoff match (round > roundRobinRounds)
       if (match.round > roundRobinRounds && match.player1Id && match.player2Id) {
-        await this.db.runAsync(`
-          UPDATE tournament_matches
-          SET player1_id = ?, player2_id = ?, status = ?, updated_at = ?
-          WHERE id = ? AND tournament_id = ?
-        `, [match.player1Id, match.player2Id, match.status, now, match.id, tournamentId]);
+        // For doubles matches, also update player3, player4, and team names
+        const isDoubles = !!(match.player3Id && match.player4Id);
+
+        if (isDoubles) {
+          await this.db.runAsync(`
+            UPDATE tournament_matches
+            SET player1_id = ?, player2_id = ?, player3_id = ?, player4_id = ?,
+                player1_name = ?, player2_name = ?, player3_name = ?, player4_name = ?,
+                team1_name = ?, team2_name = ?,
+                status = ?, updated_at = ?
+            WHERE id = ? AND tournament_id = ?
+          `, [
+            match.player1Id, match.player2Id, match.player3Id, match.player4Id,
+            match.player1Name, match.player2Name, match.player3Name, match.player4Name,
+            match.team1Name, match.team2Name,
+            match.status, now, match.id, tournamentId
+          ]);
+        } else {
+          await this.db.runAsync(`
+            UPDATE tournament_matches
+            SET player1_id = ?, player2_id = ?,
+                player1_name = ?, player2_name = ?,
+                status = ?, updated_at = ?
+            WHERE id = ? AND tournament_id = ?
+          `, [
+            match.player1Id, match.player2Id,
+            match.player1Name, match.player2Name,
+            match.status, now, match.id, tournamentId
+          ]);
+        }
       }
     }
   }
