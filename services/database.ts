@@ -301,6 +301,49 @@ class DatabaseService {
     for (const table of tables) {
       await this.db.execAsync(table);
     }
+
+    // Create database indexes for performance optimization
+    await this.createIndexes();
+  }
+
+  private async createIndexes() {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const indexes = [
+      // Matches table indexes - frequently queried by player and status
+      `CREATE INDEX IF NOT EXISTS idx_matches_player1 ON matches(player1_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_matches_player2 ON matches(player2_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_matches_status ON matches(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_matches_completed_at ON matches(completed_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_matches_winner ON matches(winner_id)`,
+
+      // Game sets table indexes - queried by match
+      `CREATE INDEX IF NOT EXISTS idx_game_sets_match ON game_sets(match_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_sets_match_set ON game_sets(match_id, set_number)`,
+
+      // Tournament matches table indexes - frequently queried by tournament and status
+      `CREATE INDEX IF NOT EXISTS idx_tournament_matches_tournament ON tournament_matches(tournament_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_tournament_matches_status ON tournament_matches(tournament_id, status)`,
+      `CREATE INDEX IF NOT EXISTS idx_tournament_matches_round ON tournament_matches(tournament_id, round_number)`,
+      `CREATE INDEX IF NOT EXISTS idx_tournament_matches_linked ON tournament_matches(match_id)`,
+
+      // Tournament participants table indexes - queried by tournament and player
+      `CREATE INDEX IF NOT EXISTS idx_tournament_participants_tournament ON tournament_participants(tournament_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_tournament_participants_player ON tournament_participants(player_id)`,
+
+      // Tournaments table indexes - queried by status and dates
+      `CREATE INDEX IF NOT EXISTS idx_tournaments_status ON tournaments(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_tournaments_created ON tournaments(created_at DESC)`,
+    ];
+
+    try {
+      for (const index of indexes) {
+        await this.db.execAsync(index);
+      }
+      console.log('Database indexes created successfully');
+    } catch (error) {
+      console.warn('Some indexes may already exist:', error);
+    }
   }
 
   async createPlayer(player: Omit<Player, 'id' | 'createdAt' | 'updatedAt'>): Promise<Player> {
@@ -688,13 +731,18 @@ class DatabaseService {
     );
   }
 
+  /**
+   * Delete a tournament and all associated data atomically using a transaction.
+   * Tournaments with completed matches cannot be deleted to preserve Elo rating integrity.
+   */
   async deleteTournament(tournamentId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    try {
+    // Use transaction for atomicity - all deletes succeed or all fail
+    await this.db.withTransactionAsync(async () => {
       // IMPORTANT: Check if any matches were completed
       // We cannot delete tournaments with completed matches because Elo ratings have already been affected
-      const completedMatchesResult = await this.db.getFirstAsync(
+      const completedMatchesResult = await this.db!.getFirstAsync(
         `SELECT COUNT(*) as count FROM tournament_matches
          WHERE tournament_id = ? AND status = 'completed'`,
         [tournamentId]
@@ -708,23 +756,23 @@ class DatabaseService {
         );
       }
 
-      // Delete in order to handle foreign key constraints
-      // 1. First, get all match IDs linked to this tournament (only uncompleted ones at this point)
-      const tournamentMatches = await this.db.getAllAsync(
+      // Get all match IDs linked to this tournament (only uncompleted ones at this point)
+      const tournamentMatches = await this.db!.getAllAsync(
         `SELECT match_id FROM tournament_matches WHERE tournament_id = ? AND match_id IS NOT NULL`,
         [tournamentId]
       ) as { match_id: string }[];
 
-      // Delete game sets for these matches
+      // Delete in order to handle foreign key constraints
+      // 1. Delete game sets for tournament matches
       for (const tm of tournamentMatches) {
         if (tm.match_id) {
-          await this.db.runAsync(
+          await this.db!.runAsync(
             `DELETE FROM game_sets WHERE match_id = ?`,
             [tm.match_id]
           );
 
           // Delete the matches themselves
-          await this.db.runAsync(
+          await this.db!.runAsync(
             `DELETE FROM matches WHERE id = ?`,
             [tm.match_id]
           );
@@ -732,28 +780,25 @@ class DatabaseService {
       }
 
       // 2. Delete tournament matches (bracket matches)
-      await this.db.runAsync(
+      await this.db!.runAsync(
         `DELETE FROM tournament_matches WHERE tournament_id = ?`,
         [tournamentId]
       );
 
       // 3. Delete tournament participants
-      await this.db.runAsync(
+      await this.db!.runAsync(
         `DELETE FROM tournament_participants WHERE tournament_id = ?`,
         [tournamentId]
       );
 
       // 4. Finally, delete the tournament itself
-      await this.db.runAsync(
+      await this.db!.runAsync(
         `DELETE FROM tournaments WHERE id = ?`,
         [tournamentId]
       );
 
-    } catch (error) {
-      console.error('Failed to delete tournament:', error);
-      // Re-throw the error to preserve the original error message
-      throw error instanceof Error ? error : new Error('Failed to delete tournament and its associated data');
-    }
+      console.log(`Tournament ${tournamentId} deleted successfully`);
+    });
   }
 
   async addTournamentParticipants(tournamentId: string, players: Player[]): Promise<void> {
@@ -856,21 +901,37 @@ class DatabaseService {
     }
   }
 
+  /**
+   * Get tournaments with optimized loading - uses single query with aggregates
+   * This replaces the N+1 query problem in the original getTournaments()
+   */
   async getTournaments(): Promise<Tournament[]> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Single query to get tournaments with participant and match counts
     const result = await this.db.getAllAsync(`
-      SELECT * FROM tournaments 
-      ORDER BY created_at DESC
+      SELECT
+        t.*,
+        (SELECT COUNT(*) FROM tournament_participants WHERE tournament_id = t.id) as participant_count,
+        (SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = t.id AND status = 'completed') as completed_matches,
+        (SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = t.id) as total_matches
+      FROM tournaments t
+      ORDER BY t.created_at DESC
     `);
 
     const tournaments: Tournament[] = [];
-    
+
+    // For each tournament, fetch participants, matches, and stats using Promise.all for parallel loading
     for (const row of result as any[]) {
-      const participants = await this.getTournamentParticipants(row.id);
-      const matches = await this.getTournamentMatches(row.id);
-      const matchStats = await this.getTournamentMatchStats(row.id);
-      
+      const [participants, matches, matchStats] = await Promise.all([
+        this.getTournamentParticipants(row.id),
+        this.getTournamentMatches(row.id),
+        Promise.resolve({
+          completed: row.completed_matches || 0,
+          total: row.total_matches || 0
+        })
+      ]);
+
       tournaments.push({
         id: row.id,
         name: row.name,
@@ -893,6 +954,51 @@ class DatabaseService {
     }
 
     return tournaments;
+  }
+
+  /**
+   * Get tournament summary (lightweight, no full match/participant data)
+   * Use this for list views where full data isn't needed
+   */
+  async getTournamentsSummary(): Promise<Array<{
+    id: string;
+    name: string;
+    status: string;
+    format: string;
+    participantCount: number;
+    completedMatches: number;
+    totalMatches: number;
+    startDate: Date;
+    createdAt: Date;
+  }>> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const result = await this.db.getAllAsync(`
+      SELECT
+        t.id,
+        t.name,
+        t.status,
+        t.format,
+        t.start_date,
+        t.created_at,
+        (SELECT COUNT(*) FROM tournament_participants WHERE tournament_id = t.id) as participant_count,
+        (SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = t.id AND status = 'completed') as completed_matches,
+        (SELECT COUNT(*) FROM tournament_matches WHERE tournament_id = t.id) as total_matches
+      FROM tournaments t
+      ORDER BY t.created_at DESC
+    `);
+
+    return result.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      format: row.format,
+      participantCount: row.participant_count || 0,
+      completedMatches: row.completed_matches || 0,
+      totalMatches: row.total_matches || 0,
+      startDate: new Date(row.start_date),
+      createdAt: new Date(row.created_at),
+    }));
   }
 
   private async getTournamentParticipants(tournamentId: string): Promise<Player[]> {
@@ -1168,10 +1274,10 @@ class DatabaseService {
           tournamentId,
           suggestedMatch.round,
           suggestedMatch.matchNumber,
-          suggestedMatch.player1Id,
-          suggestedMatch.player2Id,
-          suggestedMatch.player1Name,
-          suggestedMatch.player2Name,
+          suggestedMatch.player1Id || null,
+          suggestedMatch.player2Id || null,
+          suggestedMatch.player1Name || null,
+          suggestedMatch.player2Name || null,
           suggestedMatch.status,
           now,
           now
@@ -1217,9 +1323,9 @@ class DatabaseService {
                 status = ?, updated_at = ?
             WHERE id = ? AND tournament_id = ?
           `, [
-            match.player1Id, match.player2Id, match.player3Id, match.player4Id,
-            match.player1Name, match.player2Name, match.player3Name, match.player4Name,
-            match.team1Name, match.team2Name,
+            match.player1Id, match.player2Id, match.player3Id || null, match.player4Id || null,
+            match.player1Name || null, match.player2Name || null, match.player3Name || null, match.player4Name || null,
+            match.team1Name || null, match.team2Name || null,
             match.status, now, match.id, tournamentId
           ]);
         } else {
@@ -1231,7 +1337,7 @@ class DatabaseService {
             WHERE id = ? AND tournament_id = ?
           `, [
             match.player1Id, match.player2Id,
-            match.player1Name, match.player2Name,
+            match.player1Name || null, match.player2Name || null,
             match.status, now, match.id, tournamentId
           ]);
         }

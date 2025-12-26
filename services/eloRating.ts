@@ -1,7 +1,9 @@
+import { ELO_CONFIG } from '../constants/GameRules';
+
 /**
  * Simple Elo Rating System for Table Tennis
- * 
- * Standard configuration:
+ *
+ * Standard configuration imported from GameRules:
  * - Starting rating: 1200
  * - K-factor: 32 (standard for most competitive games)
  * - Rating floor: 100 (minimum rating)
@@ -24,11 +26,11 @@ export interface MatchScore {
 }
 
 export class EloRatingService {
-  private static readonly K_FACTOR = 32;
-  private static readonly K_FACTOR_PROVISIONAL = 50; // Higher K for new players
-  private static readonly PROVISIONAL_GAMES = 10; // First 10 games are provisional
-  private static readonly STARTING_RATING = 1200;
-  private static readonly MIN_RATING = 100;
+  private static readonly K_FACTOR = ELO_CONFIG.K_FACTOR;
+  private static readonly K_FACTOR_PROVISIONAL = ELO_CONFIG.K_FACTOR_PROVISIONAL;
+  private static readonly PROVISIONAL_GAMES = ELO_CONFIG.PROVISIONAL_GAMES;
+  private static readonly STARTING_RATING = ELO_CONFIG.DEFAULT_RATING;
+  private static readonly MIN_RATING = ELO_CONFIG.MIN_RATING;
 
   /**
    * Calculate expected score for a player
