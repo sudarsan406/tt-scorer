@@ -301,7 +301,10 @@ export default function MatchCard({
                   {/* Edit button for completed matches */}
                   <TouchableOpacity
                     style={styles.editButton}
-                    onPress={() => setShowEditModal(true)}
+                    onPress={() => {
+                      console.log('Edit button pressed, sets available:', sets.length, sets);
+                      setShowEditModal(true);
+                    }}
                   >
                     <Ionicons name="pencil" size={16} color="#2196F3" />
                     <Text style={styles.editButtonText}>Edit Scores</Text>

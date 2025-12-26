@@ -33,13 +33,17 @@ export default function EditMatchScoresModal({
   onClose,
   onScoresUpdated,
 }: EditMatchScoresModalProps) {
+  console.log('EditMatchScoresModal rendered:', { visible, matchId, player1Name, player2Name, setsCount: sets.length, sets });
+
   const [editedScores, setEditedScores] = useState<{ [key: string]: { player1: string; player2: string } }>({});
   const [saving, setSaving] = useState(false);
 
   React.useEffect(() => {
+    console.log('Modal useEffect triggered:', { visible, setsLength: sets.length });
     if (visible && sets.length > 0) {
       const scores: { [key: string]: { player1: string; player2: string } } = {};
       sets.forEach((set) => {
+        console.log('Processing set:', set);
         scores[set.id] = {
           player1: set.player1Score.toString(),
           player2: set.player2Score.toString(),
@@ -47,6 +51,8 @@ export default function EditMatchScoresModal({
       });
       setEditedScores(scores);
       console.log('Initialized scores for sets:', sets.length, 'scores:', scores);
+    } else {
+      console.log('Not initializing scores:', { visible, setsLength: sets.length });
     }
   }, [visible, sets]);
 
@@ -204,6 +210,16 @@ export default function EditMatchScoresModal({
               <Ionicons name="information-circle" size={20} color="#2196F3" />
               <Text style={styles.infoText}>
                 Changes will recalculate the match winner and update Elo ratings
+              </Text>
+            </View>
+
+            {/* Debug info */}
+            <View style={{ padding: 16, backgroundColor: '#fff3cd', margin: 16, borderRadius: 8 }}>
+              <Text style={{ fontSize: 12, color: '#856404' }}>
+                Debug: Sets count: {sets.length}, EditedScores keys: {Object.keys(editedScores).length}
+              </Text>
+              <Text style={{ fontSize: 12, color: '#856404' }}>
+                Match ID: {matchId}
               </Text>
             </View>
 
