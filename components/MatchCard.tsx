@@ -7,13 +7,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { GameSet } from '../types/models';
-import EditMatchScoresModal from './EditMatchScoresModal';
 
 interface MatchCardProps {
   // Required props
   matchId: string;
   status: string;
-
+  
   // Player/Team info
   player1Id: string;
   player2Id: string;
@@ -22,23 +21,22 @@ interface MatchCardProps {
   isDoubles?: boolean;
   team1Name?: string;
   team2Name?: string;
-
+  
   // Score info (for completed matches)
   player1Sets?: number;
   player2Sets?: number;
   winnerId?: string;
   currentSet?: number;
-
+  
   // Optional props for customization
   showMatchNumber?: boolean;
   matchNumber?: number;
   showDate?: boolean;
   createdAt?: Date;
   scheduledAt?: Date;
-
+  
   // Callbacks
   onPress?: () => void;
-  onScoresUpdated?: () => void;
   loadMatchDetails: (matchId: string) => Promise<GameSet[]>;
 }
 
@@ -62,13 +60,11 @@ export default function MatchCard({
   createdAt,
   scheduledAt,
   onPress,
-  onScoresUpdated,
   loadMatchDetails
 }: MatchCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [sets, setSets] = useState<GameSet[]>([]);
   const [loading, setLoading] = useState(false);
-  const [showEditModal, setShowEditModal] = useState(false);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -273,68 +269,35 @@ export default function MatchCard({
           {isExpanded && (
             <View style={styles.detailedScores}>
               {sets.length > 0 ? (
-                <>
-                  {sets.map((set) => (
-                    <View key={set.id} style={styles.setScore}>
-                      <Text style={styles.setNumber}>Set {set.setNumber}</Text>
-                      <View style={styles.setScoreContainer}>
-                        <Text style={[
-                          styles.setScoreText,
-                          set.winnerId === player1Id && styles.player1ScoreWin
-                        ]}>
-                          {set.player1Score}
-                        </Text>
-                        <Text style={styles.setScoreSeparator}>-</Text>
-                        <Text style={[
-                          styles.setScoreText,
-                          set.winnerId === player2Id && styles.player2ScoreWin
-                        ]}>
-                          {set.player2Score}
-                        </Text>
-                      </View>
-                      {set.player1Score > 10 && set.player2Score > 10 && (
-                        <Text style={styles.deuceIndicator}>Deuce</Text>
-                      )}
+                sets.map((set) => (
+                  <View key={set.id} style={styles.setScore}>
+                    <Text style={styles.setNumber}>Set {set.setNumber}</Text>
+                    <View style={styles.setScoreContainer}>
+                      <Text style={[
+                        styles.setScoreText,
+                        set.winnerId === player1Id && styles.player1ScoreWin
+                      ]}>
+                        {set.player1Score}
+                      </Text>
+                      <Text style={styles.setScoreSeparator}>-</Text>
+                      <Text style={[
+                        styles.setScoreText,
+                        set.winnerId === player2Id && styles.player2ScoreWin
+                      ]}>
+                        {set.player2Score}
+                      </Text>
                     </View>
-                  ))}
-
-                  {/* Edit button for completed matches */}
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => {
-                      console.log('Edit button pressed, sets available:', sets.length, sets);
-                      setShowEditModal(true);
-                    }}
-                  >
-                    <Ionicons name="pencil" size={16} color="#2196F3" />
-                    <Text style={styles.editButtonText}>Edit Scores</Text>
-                  </TouchableOpacity>
-                </>
+                    {set.player1Score > 10 && set.player2Score > 10 && (
+                      <Text style={styles.deuceIndicator}>Deuce</Text>
+                    )}
+                  </View>
+                ))
               ) : (
                 <Text style={styles.noDataText}>No detailed scores available</Text>
               )}
             </View>
           )}
         </View>
-      )}
-
-      {/* Edit Scores Modal */}
-      {showEditModal && (
-        <EditMatchScoresModal
-          visible={showEditModal}
-          matchId={matchId}
-          player1Name={getDisplayName(player1Id, player1Name, team1Name)}
-          player2Name={getDisplayName(player2Id, player2Name, team2Name)}
-          sets={sets}
-          onClose={() => setShowEditModal(false)}
-          onScoresUpdated={async () => {
-            // Reload the match details
-            await toggleExpansion();
-            if (onScoresUpdated) {
-              onScoresUpdated();
-            }
-          }}
-        />
       )}
 
       {/* In progress match info */}
@@ -561,22 +524,6 @@ const styles = StyleSheet.create({
   },
   chevronIcon: {
     marginLeft: 8, // Add some spacing between score and chevron
-  },
-  editButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#E3F2FD',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    marginTop: 12,
-    gap: 6,
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2196F3',
   },
   // Player 1 color theme (blue)
   player1Row: {
