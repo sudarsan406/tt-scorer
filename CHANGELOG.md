@@ -2,6 +2,20 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.5] - 2025-01-25
+
+### Added
+- **ITTF Standard Tiebreaker**: Implemented official ITTF tiebreaker rules for round robin standings
+  - Point Difference now calculated as 4th tiebreaker criterion
+  - Tracks total game points (e.g., 11-9, 11-7) across all sets
+  - Complete ITTF order: Match Wins → Set Difference → Head-to-Head → Point Difference → Alphabetical
+
+### Improved
+- Standings now follow international table tennis federation (ITTF) standard rules
+- More accurate tie resolution for competitive tournaments
+- Info box updated to explain ITTF standard tiebreaker methodology
+- Professional-grade ranking system for serious tournament organizers
+
 ## [1.3.4] - 2025-01-25
 
 ### Added
