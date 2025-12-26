@@ -254,12 +254,61 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
   };
 
   const renderRoundRobinBracket = () => {
+    // Get unique rounds and separate group stage from playoffs
+    const rounds = Array.from(new Set(bracketMatches.map(m => m.round))).sort((a, b) => a - b);
+    const groupStageRounds = tournament?.roundRobinRounds || 1;
+    const hasPlayoffs = rounds.some(r => r > groupStageRounds);
+
+    if (!hasPlayoffs) {
+      // No playoffs - show all matches together
+      return (
+        <View style={styles.roundRobinContainer}>
+          <Text style={styles.roundTitle}>Group Stage</Text>
+          <View style={styles.matchesGrid}>
+            {bracketMatches.map(renderMatch)}
+          </View>
+        </View>
+      );
+    }
+
+    // Has playoffs - separate group stage from playoffs
+    const groupMatches = bracketMatches.filter(m => m.round <= groupStageRounds);
+    const playoffRounds = rounds.filter(r => r > groupStageRounds);
+
     return (
       <View style={styles.roundRobinContainer}>
-        <Text style={styles.roundTitle}>All Matches</Text>
+        {/* Group Stage */}
+        <Text style={styles.roundTitle}>
+          Group Stage {groupStageRounds > 1 ? `(${groupStageRounds} Rounds)` : ''}
+        </Text>
         <View style={styles.matchesGrid}>
-          {bracketMatches.map(renderMatch)}
+          {groupMatches.map(renderMatch)}
         </View>
+
+        {/* Playoffs */}
+        {playoffRounds.map(roundNum => {
+          const roundMatches = bracketMatches.filter(m => m.round === roundNum);
+          const maxPlayoffRound = Math.max(...playoffRounds);
+
+          // Determine round label
+          let roundLabel = 'Playoffs';
+          if (roundNum === maxPlayoffRound) {
+            roundLabel = 'Final';
+          } else if (roundNum === maxPlayoffRound - 1) {
+            roundLabel = 'Semifinals';
+          } else {
+            roundLabel = `Round ${roundNum - groupStageRounds}`;
+          }
+
+          return (
+            <View key={roundNum} style={styles.playoffSection}>
+              <Text style={styles.roundTitle}>{roundLabel}</Text>
+              <View style={styles.matchesGrid}>
+                {roundMatches.map(renderMatch)}
+              </View>
+            </View>
+          );
+        })}
       </View>
     );
   };
@@ -341,12 +390,19 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
             <View style={styles.infoItem}>
               <Text style={styles.infoNumber}>3.</Text>
               <Text style={styles.infoText}>
-                <Text style={styles.infoBold}>Win Percentage</Text> (Tiebreaker #2)
+                <Text style={styles.infoBold}>Total Set Wins</Text> (Tiebreaker #2)
+              </Text>
+            </View>
+            <View style={styles.infoItem}>
+              <Text style={styles.infoNumber}>4.</Text>
+              <Text style={styles.infoText}>
+                <Text style={styles.infoBold}>Head-to-Head Result</Text> (Tiebreaker #3)
               </Text>
             </View>
             <Text style={styles.infoExample}>
-              Example: A player with 5-1 (5 wins, 1 loss) beats a player with 4-2,
-              even if the 4-2 player has better set difference.
+              Example: A player with 5-1 beats a player with 4-2,
+              even if the 4-2 player has better set difference. If two players
+              are tied on all stats, the winner of their direct matchup ranks higher.
             </Text>
           </View>
         )}
@@ -617,6 +673,9 @@ const styles = StyleSheet.create({
   },
   matchesGrid: {
     gap: 15,
+  },
+  playoffSection: {
+    marginTop: 24,
   },
   tabContainer: {
     flexDirection: 'row',

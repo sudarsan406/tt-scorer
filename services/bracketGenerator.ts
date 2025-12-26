@@ -792,11 +792,28 @@ export class BracketGenerator {
       standing.winPercentage = totalMatches > 0 ? (standing.matchWins / totalMatches) * 100 : 0;
     });
 
-    // Sort by: 1) Match wins, 2) Set difference, 3) Set wins
+    // Sort by: 1) Match wins, 2) Set difference, 3) Set wins, 4) Head-to-head
     return standings.sort((a, b) => {
       if (a.matchWins !== b.matchWins) return b.matchWins - a.matchWins;
       if (a.setDifference !== b.setDifference) return b.setDifference - a.setDifference;
-      return b.setWins - a.setWins;
+      if (a.setWins !== b.setWins) return b.setWins - a.setWins;
+
+      // Head-to-head: Check if these two players played each other
+      const h2hMatch = matches.find(m =>
+        m.status === 'completed' &&
+        m.round >= 1 && m.round <= roundRobinRounds &&
+        ((m.player1Id === a.player.id && m.player2Id === b.player.id) ||
+         (m.player1Id === b.player.id && m.player2Id === a.player.id))
+      );
+
+      if (h2hMatch) {
+        // If a won the head-to-head, a ranks higher (return negative to put a before b)
+        if (h2hMatch.winnerId === a.player.id) return -1;
+        if (h2hMatch.winnerId === b.player.id) return 1;
+      }
+
+      // If all else is equal, maintain original order (by player name)
+      return a.player.name.localeCompare(b.player.name);
     });
   }
 
