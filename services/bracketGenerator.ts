@@ -583,6 +583,44 @@ export class BracketGenerator {
   }
 
   /**
+   * Get the number of consecutive wins for a player in King of Court
+   * Counts backwards from the most recent match until a loss or start is found
+   */
+  private static getConsecutiveWins(matches: BracketMatch[], playerId: string): number {
+    // Sort matches by match number (descending) to get most recent first
+    const completedMatches = matches
+      .filter(m => m.status === 'completed')
+      .sort((a, b) => b.matchNumber - a.matchNumber);
+
+    let consecutiveWins = 0;
+
+    for (const match of completedMatches) {
+      // Check if this player was in the match
+      const isPlayer1 = match.player1Id === playerId;
+      const isPlayer2 = match.player2Id === playerId;
+
+      if (!isPlayer1 && !isPlayer2) {
+        // Player wasn't in this match, but we only count consecutive recent wins
+        // So if we've already started counting, stop here
+        if (consecutiveWins > 0) {
+          break;
+        }
+        continue;
+      }
+
+      // Check if player won this match
+      if (match.winnerId === playerId) {
+        consecutiveWins++;
+      } else {
+        // Player lost, stop counting
+        break;
+      }
+    }
+
+    return consecutiveWins;
+  }
+
+  /**
    * Get King of Court standings
    * Tracks individual match wins for each player
    * Used to determine who has won the most "games" (first to X match wins)
@@ -631,11 +669,18 @@ export class BracketGenerator {
    * 1. Players who haven't played yet (highest priority)
    * 2. Player who has been waiting longest (FIFO queue)
    * 3. Recent loser only after ALL other players have had their turn
+   *
+   * @param matches - All bracket matches for the tournament
+   * @param players - All players in the tournament
+   * @param completedMatchId - ID of the just-completed match
+   * @param requiredWins - Number of consecutive wins needed to become King (default: 3)
+   * @returns Next match suggestion or null if tournament should end
    */
   static suggestNextKingOfCourtMatch(
     matches: BracketMatch[],
     players: Player[],
-    completedMatchId: string
+    completedMatchId: string,
+    requiredWins: number = 3
   ): BracketMatch | null {
     const completedMatch = matches.find(m => m.id === completedMatchId);
     if (!completedMatch || !completedMatch.winnerId) {
@@ -645,6 +690,14 @@ export class BracketGenerator {
     // Winner stays on court
     const winner = players.find(p => p.id === completedMatch.winnerId);
     if (!winner) return null;
+
+    // Check if winner has reached the required number of wins to claim victory
+    const winnerConsecutiveWins = this.getConsecutiveWins(matches, completedMatch.winnerId);
+    if (winnerConsecutiveWins >= requiredWins) {
+      // Tournament is over - winner has claimed the throne!
+      console.log(`King of Court winner: ${winner.name} with ${winnerConsecutiveWins} consecutive wins!`);
+      return null;
+    }
 
     // Identify the recent loser
     const recentLoserId = completedMatch.player1Id === completedMatch.winnerId

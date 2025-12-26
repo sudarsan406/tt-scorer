@@ -943,6 +943,7 @@ class DatabaseService {
         bestOf: row.best_of || 3,
         isDoubles: row.is_doubles || false,
         roundRobinRounds: row.round_robin_rounds || 1,
+        kingOfCourtWins: row.king_of_court_wins || 3,
         hasPlayoffs: row.has_playoffs ?? undefined,
         winnerId: row.winner_id,
         participants,
@@ -1248,15 +1249,26 @@ class DatabaseService {
   async suggestNextKingOfCourtMatch(tournamentId: string, completedMatchId: string, winnerId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Get tournament configuration to check kingOfCourtWins
+    const tournaments = await this.getTournaments();
+    const tournament = tournaments.find(t => t.id === tournamentId);
+
+    if (!tournament) {
+      throw new Error('Tournament not found');
+    }
+
+    const requiredWins = tournament.kingOfCourtWins || 3;
+
     // Get all bracket matches and participants for this tournament
     const bracketMatches = await this.getTournamentBracket(tournamentId);
     const participants = await this.getTournamentParticipants(tournamentId);
 
-    // Use bracket generator to suggest next match
+    // Use bracket generator to suggest next match (or determine if tournament is complete)
     const suggestedMatch = BracketGenerator.suggestNextKingOfCourtMatch(
       bracketMatches,
       participants,
-      completedMatchId
+      completedMatchId,
+      requiredWins
     );
 
     if (suggestedMatch) {
@@ -1285,6 +1297,15 @@ class DatabaseService {
       );
 
       console.log(`Next King of Court match suggested: ${suggestedMatch.player1Name} vs ${suggestedMatch.player2Name}`);
+    } else {
+      // No more matches to suggest - tournament is complete
+      // The winner has achieved the required consecutive wins
+      const now = new Date().toISOString();
+      await this.db.runAsync(
+        `UPDATE tournaments SET status = ?, winner_id = ?, updated_at = ? WHERE id = ?`,
+        ['completed', winnerId, now, tournamentId]
+      );
+      console.log(`King of Court tournament complete! Winner: ${winnerId} with ${requiredWins} consecutive wins`);
     }
   }
 

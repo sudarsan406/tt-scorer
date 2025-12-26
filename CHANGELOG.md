@@ -2,6 +2,21 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.6] - 2025-01-26
+
+### Fixed
+- **Critical: King of Court Tournament Completion**: Fixed infinite scheduling bug where tournaments never ended
+  - Tournament now properly completes when a player reaches required consecutive wins (default: 3)
+  - Added consecutive wins tracking algorithm to count win streaks accurately
+  - Tournament status automatically updates to 'completed' when winner is determined
+  - Winner is properly recorded in tournament results
+
+### Technical Improvements
+- Added `getConsecutiveWins()` helper method in BracketGenerator for win streak tracking
+- Modified `suggestNextKingOfCourtMatch()` to accept `requiredWins` parameter and check completion condition
+- Updated database service to mark tournament complete when no more matches needed
+- Added `kingOfCourtWins` field to tournament loading query
+
 ## [1.3.5] - 2025-01-25
 
 ### Added
