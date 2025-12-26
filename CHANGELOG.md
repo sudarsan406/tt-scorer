@@ -2,6 +2,14 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.2] - 2025-01-25
+
+### Fixed
+- **Critical: Round Robin Playoff Finals**: Fixed issue where final matches could not be started in 3 and 5 player tournaments with playoffs enabled
+  - Finals now properly seed with top 2 players from group stage standings
+  - Removed player count restriction that was preventing playoff seeding for 3 and 5 player tournaments
+  - Affects both singles and doubles round robin tournaments
+
 ## [1.3.1] - 2025-01-25
 
 ### Added
