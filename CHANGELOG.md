@@ -4,6 +4,15 @@ All notable changes to TT Scorer will be documented in this file.
 
 ## [1.3.7] - 2025-01-26
 
+### Added
+- **Comprehensive Test Suite**: Added 120+ functional tests for complete code coverage
+  - Database service tests (player management, matches, tournaments, statistics)
+  - Elo rating service tests (calculations, provisional players, score adjustments)
+  - Bracket generator tests (single elimination, round robin, king of court)
+  - End-to-end workflow tests (new player journey, tournament organization, statistics tracking)
+  - Test infrastructure with Jest and React Native Testing Library
+  - Test scripts: `npm test`, `npm run test:watch`, `npm run test:coverage`
+
 ### Removed
 - **Code Cleanup**: Removed 586 lines of unused code to improve maintainability
   - Deleted `errors/AppErrors.ts` - Custom error classes not being used
@@ -16,6 +25,7 @@ All notable changes to TT Scorer will be documented in this file.
 - Smaller bundle size and faster build times
 - Reduced maintenance overhead
 - Cleaner codebase with only actively used code
+- Enhanced confidence in code quality with automated tests
 
 ## [1.3.6] - 2025-01-26
 
