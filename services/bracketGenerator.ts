@@ -810,14 +810,25 @@ export class BracketGenerator {
     const groupMatches = matches.filter(m => m.round >= 1 && m.round <= roundRobinRounds);
     const completedGroupMatches = groupMatches.filter(m => m.status === 'completed');
 
-    if (completedGroupMatches.length === groupMatches.length && players.length >= 4) {
+    if (completedGroupMatches.length === groupMatches.length) {
       // Get final standings
       const standings = this.getRoundRobinStandings(matches, players, roundRobinRounds);
 
       // Playoff rounds start after group stage rounds
       const playoffRoundStart = roundRobinRounds + 1;
 
-      if (players.length === 4) {
+      if (players.length === 3 || players.length === 5) {
+        // For 3 or 5 players with playoffs: Top 2 go to final
+        const final = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 1);
+
+        if (final && standings.length >= 2) {
+          final.player1Id = standings[0].player.id;
+          final.player1Name = standings[0].player.name;
+          final.player2Id = standings[1].player.id;
+          final.player2Name = standings[1].player.name;
+          final.status = 'scheduled';
+        }
+      } else if (players.length === 4) {
         // For 4 players: Top 2 go directly to final
         const final = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 1);
 
@@ -828,7 +839,7 @@ export class BracketGenerator {
           final.player2Name = standings[1].player.name;
           final.status = 'scheduled';
         }
-      } else {
+      } else if (players.length >= 6) {
         // For 6+ players: Seed semifinals
         const semi1 = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 1);
         const semi2 = updatedMatches.find(m => m.round === playoffRoundStart && m.matchNumber === 2);
