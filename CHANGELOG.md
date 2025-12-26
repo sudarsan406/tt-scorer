@@ -2,6 +2,21 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.7] - 2025-01-26
+
+### Removed
+- **Code Cleanup**: Removed 586 lines of unused code to improve maintainability
+  - Deleted `errors/AppErrors.ts` - Custom error classes not being used
+  - Deleted `validators/schemas.ts` - Zod validation schemas not being used
+  - Removed unused constants from `constants/GameRules.ts` (VALIDATION_LIMITS, UI_CONFIG, STATISTICS_CONFIG)
+  - Uninstalled `zod` dependency package
+  - Cleaned up empty directories
+
+### Improved
+- Smaller bundle size and faster build times
+- Reduced maintenance overhead
+- Cleaner codebase with only actively used code
+
 ## [1.3.6] - 2025-01-26
 
 ### Fixed
