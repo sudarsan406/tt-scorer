@@ -240,6 +240,10 @@ export default function TournamentBracketScreen({ route, navigation }: Tournamen
         matchNumber={match.matchNumber}
         showDate={false}
         onPress={() => handleMatchPress(match)}
+        onScoresUpdated={() => {
+          // Reload tournament data when scores are edited
+          loadTournamentData();
+        }}
         loadMatchDetails={async (matchId: string) => {
           try {
             const sets = await databaseService.getMatchSets(matchId);

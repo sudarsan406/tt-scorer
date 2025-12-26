@@ -2,6 +2,35 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.7] - 2025-01-26
+
+### Added
+- **Edit Match Scores**: New feature to correct scoring mistakes in completed tournament matches
+  - Edit individual set scores for any completed match
+  - Automatic match winner recalculation when scores change
+  - Elo ratings automatically recalculated based on edited scores
+  - Tournament bracket scores updated to reflect changes
+  - Visual validation with scoring rules (11-point minimum, 2-point margin)
+  - Shows original scores when editing for easy comparison
+  - Accessible via "Edit Scores" button when viewing match details
+
+### Technical Improvements
+- Added `editGameSetScore()` database method for score modification
+- Added `recalculateMatchWinner()` to recompute match results from set scores
+- Added `recalculatePlayerRatingsForEditedMatch()` for Elo rating updates
+- Added `updateTournamentMatchAfterEdit()` to sync tournament bracket changes
+- Created `EditMatchScoresModal` component with comprehensive validation
+- Updated `MatchCard` component to support score editing workflow
+- Tournament data automatically reloads after score edits
+
+### User Experience
+- Clear confirmation dialog before saving score changes
+- Warning that Elo ratings will be recalculated
+- Visual indicators for modified scores
+- Loading states during save operations
+- Success message with details of what was updated
+- Scoring rules displayed in modal for reference
+
 ## [1.3.6] - 2025-01-26
 
 ### Fixed
