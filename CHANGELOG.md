@@ -2,6 +2,19 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.4] - 2025-01-25
+
+### Added
+- **Playoff Round Labels**: Round robin playoffs now show proper labels ("Final", "Semifinals") instead of generic match numbers
+- **Group Stage Separation**: Clear visual separation between group stage and playoff rounds
+- **Head-to-Head Tiebreaker**: Added head-to-head result as 4th criterion for breaking ties in standings
+  - Tiebreaker order: Match Wins → Set Difference → Total Set Wins → Head-to-Head → Alphabetical
+
+### Improved
+- Playoff matches now clearly labeled as "Final" or "Semifinals" for better clarity
+- Group stage shows round count when multiple rounds are configured
+- Standings info box updated to explain all tiebreaker criteria including head-to-head
+
 ## [1.3.3] - 2025-01-25
 
 ### Fixed
