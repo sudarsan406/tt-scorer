@@ -2,6 +2,21 @@
 
 All notable changes to TT Scorer will be documented in this file.
 
+## [1.3.7] - 2025-01-26
+
+### Added
+- **Undo After Match Completion**: Extended undo functionality to work on completed matches
+  - Undo button now remains enabled even after match completion
+  - Shows clear warning when undoing a completed match
+  - Automatically reopens match if undo brings score below winning threshold
+  - Properly handles tournament bracket updates when match is reopened
+  - Added `reopenMatch()` database method to handle match state transitions
+
+### Improved
+- Better UX for correcting scoring mistakes in tournament matches
+- Clear user warnings about the implications of undoing completed matches
+- Automatic Elo rating recalculation will be triggered when match is recompleted
+
 ## [1.3.6] - 2025-01-26
 
 ### Fixed

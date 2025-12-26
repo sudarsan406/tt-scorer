@@ -260,19 +260,18 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
   };
 
   const handleUndoPoint = async () => {
-    if (isMatchComplete) {
-      Alert.alert('Cannot Undo', 'Match is already completed.');
-      return;
-    }
-
     if (scoreHistory.length === 0) {
       Alert.alert('Cannot Undo', 'No points to undo.');
       return;
     }
 
+    const warningMessage = isMatchComplete
+      ? 'This match is completed. Undoing will reopen the match and may recalculate Elo ratings. Are you sure?'
+      : 'Are you sure you want to undo the last point?';
+
     Alert.alert(
       'Undo Last Point',
-      'Are you sure you want to undo the last point?',
+      warningMessage,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -292,13 +291,47 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
               // Remove the last snapshot from history
               setScoreHistory(scoreHistory.slice(0, -1));
 
-              // Update the database to reflect the undo
-              await databaseService.updateMatchScore(
-                matchId,
-                lastSnapshot.team1Sets,
-                lastSnapshot.team2Sets,
-                lastSnapshot.currentSet
-              );
+              // Check if match should still be complete after undo
+              const setsToWin = Math.ceil(bestOf / 2);
+              const shouldBeComplete = lastSnapshot.team1Sets >= setsToWin || lastSnapshot.team2Sets >= setsToWin;
+
+              if (isMatchComplete && !shouldBeComplete) {
+                // Match was complete but should no longer be - reopen it
+                setIsMatchComplete(false);
+                setWinner(null);
+                setShowCompleteModal(false);
+
+                // Reopen the match in database
+                await databaseService.reopenMatch(matchId);
+
+                // Update match score
+                await databaseService.updateMatchScore(
+                  matchId,
+                  lastSnapshot.team1Sets,
+                  lastSnapshot.team2Sets,
+                  lastSnapshot.currentSet
+                );
+
+                // If this is a tournament match, update tournament bracket status
+                if (tournamentId && tournamentMatchId) {
+                  await databaseService.updateTournamentMatchStatus(
+                    tournamentMatchId,
+                    'in_progress',
+                    undefined,
+                    matchId,
+                    lastSnapshot.team1Sets,
+                    lastSnapshot.team2Sets
+                  );
+                }
+              } else {
+                // Just update the score
+                await databaseService.updateMatchScore(
+                  matchId,
+                  lastSnapshot.team1Sets,
+                  lastSnapshot.team2Sets,
+                  lastSnapshot.currentSet
+                );
+              }
 
               // Update or delete the current set in database
               const sets = await databaseService.getMatchSets(matchId);
@@ -322,6 +355,11 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
                   );
                 }
               }
+
+              // Update completed sets state
+              const updatedCompletedSets = sets.filter(s => s.completedAt);
+              setCompletedSets(updatedCompletedSets);
+
             } catch (error) {
               console.error('Failed to undo point:', error);
               Alert.alert('Error', 'Failed to undo point');
@@ -472,17 +510,17 @@ export default function MatchScoringScreen({ route, navigation }: MatchScoringSc
             scoreHistory.length === 0 && styles.controlButtonDisabled
           ]}
           onPress={handleUndoPoint}
-          disabled={scoreHistory.length === 0 || isMatchComplete}
+          disabled={scoreHistory.length === 0}
         >
           <Ionicons
             name="arrow-undo"
             size={24}
-            color={scoreHistory.length === 0 || isMatchComplete ? '#ccc' : '#FF9800'}
+            color={scoreHistory.length === 0 ? '#ccc' : '#FF9800'}
           />
           <Text
             style={[
               styles.controlButtonText,
-              (scoreHistory.length === 0 || isMatchComplete) && styles.controlButtonTextDisabled
+              scoreHistory.length === 0 && styles.controlButtonTextDisabled
             ]}
           >
             Undo

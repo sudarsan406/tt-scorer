@@ -633,13 +633,13 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     const now = new Date().toISOString();
-    
+
     // Complete the match
     await this.db.runAsync(
       `UPDATE matches SET status = ?, winner_id = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
       ['completed', winnerId, now, now, matchId]
     );
-    
+
     // Update Elo ratings automatically
     try {
       await this.updatePlayerRatings(matchId);
@@ -647,6 +647,20 @@ class DatabaseService {
       console.warn('Failed to update Elo ratings:', error);
       // Don't throw error - match completion is more important than rating updates
     }
+  }
+
+  async reopenMatch(matchId: string): Promise<void> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    const now = new Date().toISOString();
+
+    // Reopen the match by setting status to in_progress and clearing winner/completed_at
+    await this.db.runAsync(
+      `UPDATE matches SET status = ?, winner_id = NULL, completed_at = NULL, updated_at = ? WHERE id = ?`,
+      ['in_progress', now, matchId]
+    );
+
+    console.log(`Match ${matchId} reopened - status changed to in_progress`);
   }
 
   private mapRowToPlayer(row: any): Player {
