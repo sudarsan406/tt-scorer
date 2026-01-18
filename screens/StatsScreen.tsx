@@ -252,6 +252,42 @@ export default function StatsScreen({ navigation }: { navigation: any }) {
         {isExpanded && (
           <View style={styles.expandedContent}>
             <View style={styles.expandedSection}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.expandedSectionTitle}>Advanced Stats</Text>
+                <TouchableOpacity
+                  style={styles.viewFullStatsButton}
+                  onPress={() => navigation.navigate('PlayerStats', { playerId: playerStats.player?.id })}
+                >
+                  <Text style={styles.viewFullStatsText}>View Full Stats</Text>
+                  <Ionicons name="arrow-forward" size={16} color="#2196F3" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.advancedStatsGrid}>
+                <View style={styles.miniStatCard}>
+                  <Text style={styles.miniStatLabel}>Sets Won</Text>
+                  <Text style={styles.miniStatValue}>{playerStats.setsWon || 0}</Text>
+                </View>
+                <View style={styles.miniStatCard}>
+                  <Text style={styles.miniStatLabel}>Sets Lost</Text>
+                  <Text style={styles.miniStatValue}>{playerStats.setsLost || 0}</Text>
+                </View>
+                <View style={styles.miniStatCard}>
+                  <Text style={styles.miniStatLabel}>Set Win %</Text>
+                  <Text style={styles.miniStatValue}>{playerStats.setsPercentage || 0}%</Text>
+                </View>
+                <View style={styles.miniStatCard}>
+                  <Text style={styles.miniStatLabel}>Current Streak</Text>
+                  <Text style={[
+                    styles.miniStatValue,
+                    { color: playerStats.streakType === 'win' ? '#4CAF50' : playerStats.streakType === 'loss' ? '#F44336' : '#666' }
+                  ]}>
+                    {playerStats.currentStreak || 0} {playerStats.streakType === 'win' ? 'W' : playerStats.streakType === 'loss' ? 'L' : ''}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.expandedSection}>
               <Text style={styles.expandedSectionTitle}>Recent Matches</Text>
               {matches.length > 0 ? (
                 matches.map((match: any, idx: number) => (
@@ -911,5 +947,47 @@ const styles = StyleSheet.create({
   chartInline: {
     borderRadius: 8,
     marginVertical: 4,
+  },
+  advancedStatsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginTop: 10,
+  },
+  miniStatCard: {
+    flex: 1,
+    minWidth: '45%',
+    backgroundColor: '#f9f9f9',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  miniStatLabel: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 4,
+  },
+  miniStatValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  viewFullStatsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  viewFullStatsText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2196F3',
   },
 });

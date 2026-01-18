@@ -137,6 +137,12 @@ export default function PlayersScreen({ navigation }: { navigation: any }) {
       <View style={styles.playerActions}>
         <TouchableOpacity
           style={styles.actionButton}
+          onPress={() => navigation.navigate('PlayerStats', { playerId: item.id })}
+        >
+          <Ionicons name="stats-chart" size={18} color="#4CAF50" />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.actionButton}
           onPress={() => handleEditPlayer(item)}
         >
           <Ionicons name="pencil" size={18} color="#2196F3" />

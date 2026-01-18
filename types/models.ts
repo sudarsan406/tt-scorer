@@ -140,3 +140,35 @@ export interface OverallStatistics {
   totalTournaments: number;
   completedTournaments: number;
 }
+
+export interface HeadToHeadStats {
+  player1: Player;
+  player2: Player;
+  player1Wins: number;
+  player2Wins: number;
+  totalMatches: number;
+  player1SetsWon: number;
+  player2SetsWon: number;
+  lastFiveResults: Array<{
+    matchId: string;
+    winnerId: string;
+    score: string;
+    date: string;
+  }>;
+  averageScoreDifference: number;
+  longestWinStreak: {
+    playerId: string;
+    streak: number;
+  };
+}
+
+export interface ExtendedPlayerStatistics extends PlayerStatistics {
+  averagePointsPerSet: number;
+  comebackWins: number; // Wins after being down in sets
+  closeMatchRecord: { wins: number; total: number }; // Final set decided by 2 points or less
+  bestOpponent?: { id: string; name: string; winRate: number };
+  worstOpponent?: { id: string; name: string; winRate: number };
+  mostPlayedOpponent?: { id: string; name: string; matchCount: number };
+  formLast5: Array<'W' | 'L'>;
+  formLast10: Array<'W' | 'L'>;
+}

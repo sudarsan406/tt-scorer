@@ -6,6 +6,8 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player, PlayerStatistics, TrendingStats, StatsPeriod } from '../types/models';
@@ -19,11 +21,13 @@ interface PlayerStatsScreenProps {
 export default function PlayerStatsScreen({ navigation, route }: PlayerStatsScreenProps) {
   const { playerId } = route.params;
   const [player, setPlayer] = useState<Player | null>(null);
-  const [stats, setStats] = useState<PlayerStatistics | null>(null);
+  const [stats, setStats] = useState<any>(null);
   const [trendingStats, setTrendingStats] = useState<TrendingStats[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState<'all' | StatsPeriod>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [allPlayers, setAllPlayers] = useState<Player[]>([]);
+  const [showPlayerPicker, setShowPlayerPicker] = useState(false);
 
   useEffect(() => {
     loadPlayerData();
@@ -33,34 +37,51 @@ export default function PlayerStatsScreen({ navigation, route }: PlayerStatsScre
     try {
       setError(null);
       setLoading(true);
-      
+
       if (!playerId) {
         throw new Error('No player ID provided');
       }
 
       const [playersData, playerStats, trendingData] = await Promise.all([
         databaseService.getPlayers(),
-        databaseService.getPlayerStatistics(
-          playerId, 
+        databaseService.getExtendedPlayerStatistics(
+          playerId,
           selectedPeriod === 'all' ? undefined : selectedPeriod as StatsPeriod
         ),
         databaseService.getPlayerTrendingStats(playerId)
       ]);
-      
+
       const playerData = playersData.find(p => p.id === playerId);
       if (!playerData) {
         throw new Error('Player not found');
       }
-      
+
       setPlayer(playerData);
       setStats(playerStats);
       setTrendingStats(trendingData);
+      setAllPlayers(playersData.filter(p => p.id !== playerId));
+
+      console.log('PlayerStatsScreen - Loaded stats:', {
+        totalMatches: playerStats.totalMatches,
+        averagePointsPerSet: playerStats.averagePointsPerSet,
+        comebackWins: playerStats.comebackWins,
+        formLast5: playerStats.formLast5,
+        bestOpponent: playerStats.bestOpponent,
+      });
     } catch (error) {
       console.error('Failed to load player data:', error);
       setError(error instanceof Error ? error.message : 'Failed to load player data');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCompareWithPlayer = (opponentId: string) => {
+    setShowPlayerPicker(false);
+    navigation.navigate('HeadToHead', {
+      player1Id: playerId,
+      player2Id: opponentId
+    });
   };
 
   useEffect(() => {
@@ -207,6 +228,100 @@ export default function PlayerStatsScreen({ navigation, route }: PlayerStatsScre
         {renderStatCard(getStreakIcon(), `${stats.streakType === 'win' ? 'Win' : stats.streakType === 'loss' ? 'Loss' : 'No'} Streak`, stats.currentStreak, getStreakColor())}
       </View>
 
+      {/* Extended Statistics Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Advanced Stats</Text>
+          <TouchableOpacity
+            style={styles.compareButton}
+            onPress={() => setShowPlayerPicker(true)}
+          >
+            <Ionicons name="git-compare" size={20} color="#2196F3" />
+            <Text style={styles.compareButtonText}>Compare</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* DEBUG: Show what we have */}
+        <Text style={{ fontSize: 10, color: '#999', padding: 10 }}>
+          Debug: Matches={stats.totalMatches}, Avg={stats.averagePointsPerSet}, Comeback={stats.comebackWins}
+        </Text>
+
+        {stats.totalMatches > 0 ? (
+          <>
+            <View style={styles.statsGrid}>
+              {renderStatCard('pulse', 'Avg Points/Set', stats.averagePointsPerSet && stats.averagePointsPerSet > 0 ? stats.averagePointsPerSet.toFixed(1) : 'N/A', '#3F51B5')}
+              {renderStatCard('trending-up', 'Comeback Wins', stats.comebackWins || 0, '#4CAF50')}
+              {renderStatCard(
+                'git-merge',
+                'Close Matches',
+                stats.closeMatchRecord ? `${stats.closeMatchRecord.wins}/${stats.closeMatchRecord.total}` : '0/0',
+                '#FF5722'
+              )}
+            </View>
+
+            {/* Form Display */}
+            {stats.formLast5 && stats.formLast5.length > 0 && (
+          <View style={styles.formContainer}>
+            <Text style={styles.formLabel}>Last 5 Matches</Text>
+            <View style={styles.formRow}>
+              {stats.formLast5.map((result: string, index: number) => (
+                <View
+                  key={index}
+                  style={[
+                    styles.formBadge,
+                    result === 'W' ? styles.formBadgeWin : styles.formBadgeLoss
+                  ]}
+                >
+                  <Text style={styles.formBadgeText}>{result}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Opponent Stats */}
+        {stats.bestOpponent && (
+          <View style={styles.opponentCard}>
+            <Ionicons name="star" size={20} color="#FFD700" />
+            <View style={styles.opponentInfo}>
+              <Text style={styles.opponentLabel}>Best Against</Text>
+              <Text style={styles.opponentName}>{stats.bestOpponent.name}</Text>
+              <Text style={styles.opponentValue}>{stats.bestOpponent.winRate}% win rate</Text>
+            </View>
+          </View>
+        )}
+
+        {stats.worstOpponent && (
+          <View style={styles.opponentCard}>
+            <Ionicons name="warning" size={20} color="#F44336" />
+            <View style={styles.opponentInfo}>
+              <Text style={styles.opponentLabel}>Toughest Opponent</Text>
+              <Text style={styles.opponentName}>{stats.worstOpponent.name}</Text>
+              <Text style={styles.opponentValue}>{stats.worstOpponent.winRate}% win rate</Text>
+            </View>
+          </View>
+        )}
+
+        {stats.mostPlayedOpponent && (
+          <View style={styles.opponentCard}>
+            <Ionicons name="people" size={20} color="#2196F3" />
+            <View style={styles.opponentInfo}>
+              <Text style={styles.opponentLabel}>Most Played</Text>
+              <Text style={styles.opponentName}>{stats.mostPlayedOpponent.name}</Text>
+              <Text style={styles.opponentValue}>{stats.mostPlayedOpponent.matchCount} matches</Text>
+            </View>
+          </View>
+        )}
+          </>
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="analytics-outline" size={48} color="#ccc" />
+            <Text style={styles.emptyStateText}>No match data available</Text>
+            <Text style={styles.emptyStateSubtext}>Play some matches to see advanced statistics</Text>
+          </View>
+        )}
+      </View>
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Matches</Text>
         {stats.recentMatches && stats.recentMatches.length > 0 ? (
@@ -299,6 +414,45 @@ export default function PlayerStatsScreen({ navigation, route }: PlayerStatsScre
           </View>
         </View>
       </View>
+
+      {/* Player Picker Modal */}
+      <Modal
+        visible={showPlayerPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowPlayerPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Compare with Player</Text>
+              <TouchableOpacity onPress={() => setShowPlayerPicker(false)}>
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={allPlayers}
+              keyExtractor={(item) => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.playerPickerItem}
+                  onPress={() => handleCompareWithPlayer(item.id)}
+                >
+                  <Text style={styles.playerPickerName}>{item.name}</Text>
+                  <Text style={styles.playerPickerRating}>
+                    Rating: {item.rating || 1200}
+                  </Text>
+                </TouchableOpacity>
+              )}
+              ListEmptyComponent={
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No other players available</Text>
+                </View>
+              }
+            />
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -457,6 +611,12 @@ const styles = StyleSheet.create({
     marginTop: 12,
     textAlign: 'center',
   },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 5,
+    textAlign: 'center',
+  },
   performanceCard: {
     backgroundColor: '#fff',
     padding: 20,
@@ -583,5 +743,128 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  compareButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#E3F2FD',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 4,
+  },
+  compareButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#2196F3',
+  },
+  formContainer: {
+    marginTop: 15,
+    paddingVertical: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  formLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 10,
+  },
+  formRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  formBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  formBadgeWin: {
+    backgroundColor: '#4CAF50',
+  },
+  formBadgeLoss: {
+    backgroundColor: '#F44336',
+  },
+  formBadgeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  opponentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 10,
+    gap: 12,
+  },
+  opponentInfo: {
+    flex: 1,
+  },
+  opponentLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 2,
+  },
+  opponentName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 2,
+  },
+  opponentValue: {
+    fontSize: 14,
+    color: '#666',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    paddingBottom: 20,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  playerPickerItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  playerPickerName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  playerPickerRating: {
+    fontSize: 14,
+    color: '#666',
   },
 });

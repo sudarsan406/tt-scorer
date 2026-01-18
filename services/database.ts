@@ -633,13 +633,48 @@ class DatabaseService {
     if (!this.db) throw new Error('Database not initialized');
 
     const now = new Date().toISOString();
-    
+
+    console.log('completeMatch called:', { matchId, winnerId });
+
     // Complete the match
     await this.db.runAsync(
       `UPDATE matches SET status = ?, winner_id = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
       ['completed', winnerId, now, now, matchId]
     );
-    
+
+    // Check if this match is part of a tournament
+    const tournamentMatch = await this.db.getFirstAsync(`
+      SELECT id, tournament_id FROM tournament_matches WHERE match_id = ?
+    `, [matchId]) as any;
+
+    if (tournamentMatch) {
+      console.log('Match is part of tournament, updating tournament match:', tournamentMatch.id);
+
+      // Get match details to get the score
+      const match = await this.db.getFirstAsync(`
+        SELECT player1_id, player2_id, player1_sets, player2_sets FROM matches WHERE id = ?
+      `, [matchId]) as any;
+
+      if (match) {
+        // Update the tournament match status to completed
+        await this.updateTournamentMatchStatus(
+          tournamentMatch.id,
+          'completed',
+          winnerId,
+          matchId,
+          match.player1_sets || 0,
+          match.player2_sets || 0
+        );
+
+        // Advance the winner to next round
+        await this.advanceTournamentWinner(
+          tournamentMatch.tournament_id,
+          tournamentMatch.id,
+          winnerId
+        );
+      }
+    }
+
     // Update Elo ratings automatically
     try {
       await this.updatePlayerRatings(matchId);
@@ -1109,6 +1144,8 @@ class DatabaseService {
   async updateTournamentMatchStatus(tournamentMatchId: string, status: string, winnerId?: string, actualMatchId?: string, player1Sets?: number, player2Sets?: number): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    console.log('updateTournamentMatchStatus called:', { tournamentMatchId, status, winnerId, player1Sets, player2Sets });
+
     const now = new Date().toISOString();
 
     // First try to add match score columns if they don't exist
@@ -1123,6 +1160,8 @@ class DatabaseService {
       `UPDATE tournament_matches SET status = ?, winner_id = ?, match_id = ?, player1_sets = ?, player2_sets = ?, updated_at = ? WHERE id = ?`,
       [status, winnerId || null, actualMatchId || null, player1Sets || 0, player2Sets || 0, now, tournamentMatchId]
     );
+
+    console.log('Tournament match updated successfully');
 
     // Auto-update tournament status based on match statuses
     // Get the tournament ID for this match
@@ -1154,32 +1193,45 @@ class DatabaseService {
   async advanceTournamentWinner(tournamentId: string, completedMatchId: string, winnerId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    console.log('advanceTournamentWinner called:', { tournamentId, completedMatchId, winnerId });
+
     // Get the completed match
     const completedMatch = await this.db.getFirstAsync(`
       SELECT * FROM tournament_matches WHERE id = ? AND tournament_id = ?
     `, [completedMatchId, tournamentId]);
 
-    if (!completedMatch) return;
+    if (!completedMatch) {
+      console.log('Completed match not found');
+      return;
+    }
 
-    // Get tournament format to handle round robin differently
+    // Get tournament format AND round robin rounds to handle round robin differently
     const tournament = await this.db.getFirstAsync(`
-      SELECT format FROM tournaments WHERE id = ?
-    `, [tournamentId]);
+      SELECT format, round_robin_rounds FROM tournaments WHERE id = ?
+    `, [tournamentId]) as any;
 
-    if ((tournament as any)?.format === 'round_robin') {
-      // For round robin, check if group stage is complete and seed playoffs
+    const roundRobinRounds = tournament?.round_robin_rounds || 1;
+    const completedMatchRound = (completedMatch as any).round_number;
+
+    console.log('Tournament format:', tournament?.format, 'RR rounds:', roundRobinRounds, 'Completed match round:', completedMatchRound);
+
+    if (tournament?.format === 'round_robin' && completedMatchRound <= roundRobinRounds) {
+      // For round robin GROUP STAGE matches, check if group stage is complete and seed playoffs
+      console.log('Round robin group stage match completed - checking if playoffs should be seeded');
       await this.seedRoundRobinPlayoffs(tournamentId);
-    } else if ((tournament as any)?.format === 'king_of_court') {
+    } else if (tournament?.format === 'king_of_court') {
       // For King of Court, auto-generate next match suggestion
       await this.suggestNextKingOfCourtMatch(tournamentId, completedMatchId, winnerId);
     } else {
-      // Single elimination logic
+      // Single elimination logic OR round robin PLAYOFF matches
+      console.log('Using single elimination advancement logic (works for playoffs too)');
       const nextMatch = await this.db.getFirstAsync(`
         SELECT * FROM tournament_matches
         WHERE tournament_id = ? AND (parent_match1_id = ? OR parent_match2_id = ?)
       `, [tournamentId, completedMatchId, completedMatchId]);
 
       if (nextMatch) {
+        console.log('Found next match to advance winner to:', (nextMatch as any).id);
         const now = new Date().toISOString();
 
         // Determine if winner goes to player1 or player2 slot
@@ -1205,7 +1257,10 @@ class DatabaseService {
             `UPDATE tournament_matches SET status = ?, updated_at = ? WHERE id = ?`,
             ['scheduled', now, (nextMatch as any).id]
           );
+          console.log('Next match is now scheduled with both players');
         }
+      } else {
+        console.log('No next match found - this may be the final match');
       }
     }
 
@@ -1216,61 +1271,93 @@ class DatabaseService {
   async checkAndCompleteTournament(tournamentId: string, _lastWinnerId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
-    // Get tournament details to determine format
-    const tournaments = await this.getTournaments();
-    const tournament = tournaments.find(t => t.id === tournamentId);
+    try {
+      console.log('checkAndCompleteTournament called for tournament:', tournamentId);
 
-    if (!tournament) return;
+      // Get tournament details directly from database (more efficient than getTournaments)
+      const tournamentRow = await this.db.getFirstAsync(`
+        SELECT format, has_playoffs, round_robin_rounds FROM tournaments WHERE id = ?
+      `, [tournamentId]) as any;
 
-    // Get all tournament matches
-    const allMatches = await this.db.getAllAsync(`
-      SELECT * FROM tournament_matches WHERE tournament_id = ?
-      ORDER BY round_number DESC
-    `, [tournamentId]);
+      if (!tournamentRow) {
+        console.log('Tournament not found:', tournamentId);
+        return;
+      }
 
-    const matches = allMatches as any[];
+      console.log('Tournament format:', tournamentRow.format, 'hasPlayoffs:', tournamentRow.has_playoffs);
 
-    if (matches.length === 0) return;
+      // Get all tournament matches
+      const allMatches = await this.db.getAllAsync(`
+        SELECT * FROM tournament_matches WHERE tournament_id = ?
+        ORDER BY round_number DESC
+      `, [tournamentId]);
 
-    // Check if all matches are completed
-    const completedMatches = matches.filter(m => m.status === 'completed');
-    const allCompleted = completedMatches.length === matches.length;
+      const matches = allMatches as any[];
 
-    if (allCompleted) {
-      let winnerId: string | null = null;
+      console.log('Total tournament matches:', matches.length);
 
-      // Determine winner based on tournament format
-      if (tournament.format === 'round_robin' && !tournament.hasPlayoffs) {
-        // For round robin without playoffs, winner is determined by standings
-        const bracket = await this.getTournamentBracket(tournamentId);
-        const participants = await this.getTournamentParticipants(tournamentId);
+      if (matches.length === 0) return;
 
-        const standings = BracketGenerator.getRoundRobinStandings(
-          bracket,
-          participants,
-          tournament.roundRobinRounds || 1
-        );
+      // Check if all matches are completed
+      const completedMatches = matches.filter(m => m.status === 'completed');
+      const allCompleted = completedMatches.length === matches.length;
 
-        if (standings.length > 0) {
-          winnerId = standings[0].player.id;
-          console.log('Round robin tournament complete! Winner by standings:', winnerId, standings[0].player.name);
+      console.log('Completed matches:', completedMatches.length, '/', matches.length, 'All completed?', allCompleted);
+
+      if (allCompleted) {
+        let winnerId: string | null = null;
+
+        // Determine winner based on tournament format
+        if (tournamentRow.format === 'round_robin' && !tournamentRow.has_playoffs) {
+          console.log('Round robin WITHOUT playoffs - using standings');
+          // For round robin without playoffs, winner is determined by standings
+          const bracket = await this.getTournamentBracket(tournamentId);
+          const participants = await this.getTournamentParticipants(tournamentId);
+
+          const standings = BracketGenerator.getRoundRobinStandings(
+            bracket,
+            participants,
+            tournamentRow.round_robin_rounds || 1
+          );
+
+          if (standings.length > 0) {
+            winnerId = standings[0].player.id;
+            console.log('Round robin tournament complete! Winner by standings:', winnerId, standings[0].player.name);
+          }
+        } else {
+          console.log('Single elimination or round robin WITH playoffs - using final match');
+          // For single elimination or round robin with playoffs, winner is the final match winner
+          const finalMatch = matches[0]; // Already sorted by round_number DESC
+          winnerId = finalMatch.winner_id;
+          console.log('Final match details:', {
+            id: finalMatch.id,
+            round: finalMatch.round_number,
+            status: finalMatch.status,
+            winnerId: finalMatch.winner_id
+          });
+          console.log('Tournament complete! Final match winner:', winnerId);
+        }
+
+        if (winnerId) {
+          const now = new Date().toISOString();
+
+          console.log('Updating tournament to completed with winner:', winnerId);
+
+          // Update tournament status to completed with winner
+          await this.db.runAsync(
+            `UPDATE tournaments SET status = ?, winner_id = ?, updated_at = ? WHERE id = ?`,
+            ['completed', winnerId, now, tournamentId]
+          );
+          console.log('✅ Tournament marked as completed with winner:', winnerId);
+        } else {
+          console.log('⚠️ No winner determined - skipping tournament completion');
         }
       } else {
-        // For single elimination or round robin with playoffs, winner is the final match winner
-        const finalMatch = matches[0]; // Already sorted by round_number DESC
-        winnerId = finalMatch.winner_id;
-        console.log('Tournament complete! Final match winner:', winnerId);
+        console.log('❌ Not all matches completed yet - tournament still in progress');
       }
-
-      if (winnerId) {
-        const now = new Date().toISOString();
-
-        // Update tournament status to completed with winner
-        await this.db.runAsync(
-          `UPDATE tournaments SET status = ?, winner_id = ?, updated_at = ? WHERE id = ?`,
-          ['completed', winnerId, now, tournamentId]
-        );
-      }
+    } catch (error) {
+      console.error('❌ Error in checkAndCompleteTournament:', error);
+      // Don't throw - let the match completion succeed even if tournament update fails
     }
   }
 
@@ -1676,6 +1763,318 @@ class DatabaseService {
       console.error('Error fetching overall statistics:', error);
       throw new Error('Failed to fetch overall statistics');
     }
+  }
+
+  async getHeadToHeadStats(player1Id: string, player2Id: string): Promise<any> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Get both players
+    const players = await this.getPlayers();
+    const player1 = players.find(p => p.id === player1Id);
+    const player2 = players.find(p => p.id === player2Id);
+
+    if (!player1 || !player2) {
+      throw new Error('One or both players not found');
+    }
+
+    // Get all matches between these two players
+    const matches = await this.db.getAllAsync(`
+      SELECT * FROM matches
+      WHERE ((player1_id = ? AND player2_id = ?) OR (player1_id = ? AND player2_id = ?))
+        AND status = 'completed'
+      ORDER BY completed_at DESC
+    `, [player1Id, player2Id, player2Id, player1Id]);
+
+    const totalMatches = matches.length;
+    let player1Wins = 0;
+    let player2Wins = 0;
+    let player1SetsWon = 0;
+    let player2SetsWon = 0;
+
+    const lastFiveResults: any[] = [];
+
+    for (const match of matches as any[]) {
+      // Count wins
+      if (match.winner_id === player1Id) {
+        player1Wins++;
+      } else if (match.winner_id === player2Id) {
+        player2Wins++;
+      }
+
+      // Count sets
+      if (match.player1_id === player1Id) {
+        player1SetsWon += match.player1_sets || 0;
+        player2SetsWon += match.player2_sets || 0;
+      } else {
+        player1SetsWon += match.player2_sets || 0;
+        player2SetsWon += match.player1_sets || 0;
+      }
+
+      // Store last 5 results
+      if (lastFiveResults.length < 5) {
+        const p1Sets = match.player1_id === player1Id ? match.player1_sets : match.player2_sets;
+        const p2Sets = match.player1_id === player1Id ? match.player2_sets : match.player1_sets;
+        lastFiveResults.push({
+          matchId: match.id,
+          winnerId: match.winner_id,
+          score: `${p1Sets || 0}-${p2Sets || 0}`,
+          date: match.completed_at
+        });
+      }
+    }
+
+    // Calculate longest win streak
+    let currentStreak = 0;
+    let maxStreak = 0;
+    let streakPlayerId = player1Id;
+    let lastWinnerId: string | null = null;
+
+    for (const match of matches as any[]) {
+      if (match.winner_id === lastWinnerId) {
+        currentStreak++;
+      } else {
+        if (currentStreak > maxStreak) {
+          maxStreak = currentStreak;
+          streakPlayerId = lastWinnerId || player1Id;
+        }
+        currentStreak = 1;
+        lastWinnerId = match.winner_id;
+      }
+    }
+
+    if (currentStreak > maxStreak) {
+      maxStreak = currentStreak;
+      streakPlayerId = lastWinnerId || player1Id;
+    }
+
+    const averageScoreDifference = totalMatches > 0
+      ? Math.abs((player1SetsWon - player2SetsWon) / totalMatches)
+      : 0;
+
+    return {
+      player1,
+      player2,
+      player1Wins,
+      player2Wins,
+      totalMatches,
+      player1SetsWon,
+      player2SetsWon,
+      lastFiveResults,
+      averageScoreDifference: Math.round(averageScoreDifference * 100) / 100,
+      longestWinStreak: {
+        playerId: streakPlayerId,
+        streak: maxStreak
+      }
+    };
+  }
+
+  async getExtendedPlayerStatistics(playerId: string, period?: StatsPeriod): Promise<any> {
+    if (!this.db) throw new Error('Database not initialized');
+
+    // Get base statistics
+    const baseStats = await this.getPlayerStatistics(playerId, period);
+
+    // Calculate date filter
+    let dateFilter = '';
+    let queryParams: any[] = [playerId, playerId];
+
+    if (period) {
+      const now = new Date();
+      let startDate: Date;
+
+      switch (period) {
+        case '7d':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case '3m':
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          break;
+        case '6m':
+          startDate = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+          break;
+        case '1y':
+          startDate = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(0);
+      }
+
+      dateFilter = ` AND m.completed_at >= ?`;
+      queryParams.push(startDate.toISOString());
+    }
+
+    // Get all matches with sets data
+    const matches = await this.db.getAllAsync(`
+      SELECT m.*, s.player1_score, s.player2_score, s.set_number, s.winner_id as set_winner_id
+      FROM matches m
+      LEFT JOIN game_sets s ON m.id = s.match_id
+      WHERE (m.player1_id = ? OR m.player2_id = ?) AND m.status = 'completed'${dateFilter}
+      ORDER BY m.completed_at DESC, s.set_number ASC
+    `, queryParams);
+
+    // Calculate average points per set
+    let totalPoints = 0;
+    let totalSets = 0;
+    const matchMap = new Map<string, any>();
+
+    for (const row of matches as any[]) {
+      if (!matchMap.has(row.id)) {
+        matchMap.set(row.id, {
+          ...row,
+          sets: []
+        });
+      }
+      const match = matchMap.get(row.id);
+
+      if (row.player1_score !== null && row.player2_score !== null) {
+        match.sets.push({
+          player1_score: row.player1_score,
+          player2_score: row.player2_score,
+          set_number: row.set_number,
+          set_winner_id: row.set_winner_id
+        });
+
+        const playerScore = row.player1_id === playerId ? row.player1_score : row.player2_score;
+        totalPoints += playerScore;
+        totalSets++;
+      }
+    }
+
+    const averagePointsPerSet = totalSets > 0 ? Math.round((totalPoints / totalSets) * 10) / 10 : 0;
+
+    // Calculate comeback wins (won match after being down in sets)
+    let comebackWins = 0;
+    for (const match of matchMap.values()) {
+      if (match.winner_id === playerId && match.sets.length >= 2) {
+        const playerSets = match.sets.filter((s: any) => s.set_winner_id === playerId).length;
+        const opponentSets = match.sets.length - playerSets;
+
+        // Check if player was ever behind in sets
+        let playerSetsWon = 0;
+        let opponentSetsWon = 0;
+        let wasBehind = false;
+
+        for (const set of match.sets) {
+          if (set.set_winner_id === playerId) {
+            playerSetsWon++;
+          } else {
+            opponentSetsWon++;
+          }
+
+          if (opponentSetsWon > playerSetsWon) {
+            wasBehind = true;
+          }
+        }
+
+        if (wasBehind) {
+          comebackWins++;
+        }
+      }
+    }
+
+    // Calculate close match record
+    let closeMatchWins = 0;
+    let closeMatchTotal = 0;
+
+    for (const match of matchMap.values()) {
+      if (match.sets.length >= 2) {
+        const finalSet = match.sets[match.sets.length - 1];
+        if (finalSet) {
+          const scoreDiff = Math.abs(finalSet.player1_score - finalSet.player2_score);
+          if (scoreDiff <= 2 || (finalSet.player1_score >= 10 && finalSet.player2_score >= 10)) {
+            closeMatchTotal++;
+            if (match.winner_id === playerId) {
+              closeMatchWins++;
+            }
+          }
+        }
+      }
+    }
+
+    // Get opponent statistics
+    const opponentStats = new Map<string, { wins: number; total: number; name: string }>();
+
+    for (const match of matchMap.values()) {
+      const opponentId = match.player1_id === playerId ? match.player2_id : match.player1_id;
+      if (!opponentStats.has(opponentId)) {
+        const opponent = await this.db.getFirstAsync(
+          'SELECT name FROM players WHERE id = ?',
+          [opponentId]
+        ) as any;
+        opponentStats.set(opponentId, {
+          wins: 0,
+          total: 0,
+          name: opponent?.name || 'Unknown'
+        });
+      }
+
+      const stats = opponentStats.get(opponentId)!;
+      stats.total++;
+      if (match.winner_id === playerId) {
+        stats.wins++;
+      }
+    }
+
+    // Find best/worst/most played opponents
+    let bestOpponent: any = undefined;
+    let worstOpponent: any = undefined;
+    let mostPlayedOpponent: any = undefined;
+    let maxWinRate = 0;
+    let minWinRate = 1;
+    let maxMatches = 0;
+
+    for (const [opponentId, stats] of opponentStats.entries()) {
+      if (stats.total >= 2) { // Only consider opponents with 2+ matches
+        const winRate = stats.wins / stats.total;
+        if (winRate > maxWinRate) {
+          maxWinRate = winRate;
+          bestOpponent = { id: opponentId, name: stats.name, winRate: Math.round(winRate * 100) };
+        }
+        if (winRate < minWinRate) {
+          minWinRate = winRate;
+          worstOpponent = { id: opponentId, name: stats.name, winRate: Math.round(winRate * 100) };
+        }
+      }
+      if (stats.total > maxMatches) {
+        maxMatches = stats.total;
+        mostPlayedOpponent = { id: opponentId, name: stats.name, matchCount: stats.total };
+      }
+    }
+
+    // Calculate form (last 5 and last 10)
+    const matchesList = Array.from(matchMap.values());
+    const formLast5 = matchesList
+      .slice(0, 5)
+      .map(m => m.winner_id === playerId ? 'W' : 'L');
+    const formLast10 = matchesList
+      .slice(0, 10)
+      .map(m => m.winner_id === playerId ? 'W' : 'L');
+
+    const result = {
+      ...baseStats,
+      averagePointsPerSet,
+      comebackWins,
+      closeMatchRecord: { wins: closeMatchWins, total: closeMatchTotal },
+      bestOpponent,
+      worstOpponent,
+      mostPlayedOpponent,
+      formLast5,
+      formLast10
+    };
+
+    console.log('Extended stats for player:', playerId, {
+      averagePointsPerSet,
+      comebackWins,
+      closeMatchTotal,
+      hasForm: formLast5.length > 0,
+      hasBestOpponent: !!bestOpponent,
+      totalMatchesProcessed: matchMap.size
+    });
+
+    return result;
   }
 
   async getPlayerEloHistory(playerId: string, limit: number = 20): Promise<Array<{ date: string; rating: number; matchId: string; opponent: string; won: boolean }>> {

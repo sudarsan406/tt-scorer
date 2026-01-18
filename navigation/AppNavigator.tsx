@@ -15,6 +15,7 @@ import TournamentCreateScreen from '../screens/TournamentCreateScreen';
 import TournamentDetailScreen from '../screens/TournamentDetailScreen';
 import TournamentBracketScreen from '../screens/TournamentBracketScreen';
 import PlayerStatsScreen from '../screens/PlayerStatsScreen';
+import HeadToHeadScreen from '../screens/HeadToHeadScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -126,10 +127,15 @@ export default function AppNavigator() {
           component={TournamentBracketScreen as any}
           options={{ title: 'Tournament Bracket' }}
         />
-        <Stack.Screen 
-          name="PlayerStats" 
+        <Stack.Screen
+          name="PlayerStats"
           component={PlayerStatsScreen}
           options={{ title: 'Player Statistics' }}
+        />
+        <Stack.Screen
+          name="HeadToHead"
+          component={HeadToHeadScreen}
+          options={{ title: 'Head to Head' }}
         />
       </Stack.Navigator>
     </NavigationContainer>
