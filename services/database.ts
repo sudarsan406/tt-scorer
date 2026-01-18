@@ -1216,6 +1216,12 @@ class DatabaseService {
   async checkAndCompleteTournament(tournamentId: string, _lastWinnerId: string): Promise<void> {
     if (!this.db) throw new Error('Database not initialized');
 
+    // Get tournament details to determine format
+    const tournaments = await this.getTournaments();
+    const tournament = tournaments.find(t => t.id === tournamentId);
+
+    if (!tournament) return;
+
     // Get all tournament matches
     const allMatches = await this.db.getAllAsync(`
       SELECT * FROM tournament_matches WHERE tournament_id = ?
@@ -1223,7 +1229,7 @@ class DatabaseService {
     `, [tournamentId]);
 
     const matches = allMatches as any[];
-    
+
     if (matches.length === 0) return;
 
     // Check if all matches are completed
@@ -1231,18 +1237,40 @@ class DatabaseService {
     const allCompleted = completedMatches.length === matches.length;
 
     if (allCompleted) {
-      // Find the final match (highest round number)
-      const finalMatch = matches[0]; // Already sorted by round_number DESC
-      
-      console.log('Tournament complete! Final match winner:', finalMatch.winner_id);
-      
-      const now = new Date().toISOString();
-      
-      // Update tournament status to completed with winner
-      await this.db.runAsync(
-        `UPDATE tournaments SET status = ?, winner_id = ?, updated_at = ? WHERE id = ?`,
-        ['completed', finalMatch.winner_id, now, tournamentId]
-      );
+      let winnerId: string | null = null;
+
+      // Determine winner based on tournament format
+      if (tournament.format === 'round_robin' && !tournament.hasPlayoffs) {
+        // For round robin without playoffs, winner is determined by standings
+        const bracket = await this.getTournamentBracket(tournamentId);
+        const participants = await this.getTournamentParticipants(tournamentId);
+
+        const standings = BracketGenerator.getRoundRobinStandings(
+          bracket,
+          participants,
+          tournament.roundRobinRounds || 1
+        );
+
+        if (standings.length > 0) {
+          winnerId = standings[0].player.id;
+          console.log('Round robin tournament complete! Winner by standings:', winnerId, standings[0].player.name);
+        }
+      } else {
+        // For single elimination or round robin with playoffs, winner is the final match winner
+        const finalMatch = matches[0]; // Already sorted by round_number DESC
+        winnerId = finalMatch.winner_id;
+        console.log('Tournament complete! Final match winner:', winnerId);
+      }
+
+      if (winnerId) {
+        const now = new Date().toISOString();
+
+        // Update tournament status to completed with winner
+        await this.db.runAsync(
+          `UPDATE tournaments SET status = ?, winner_id = ?, updated_at = ? WHERE id = ?`,
+          ['completed', winnerId, now, tournamentId]
+        );
+      }
     }
   }
 
