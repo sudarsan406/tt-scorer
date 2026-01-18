@@ -38,3 +38,6 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 package-lock.json
+
+# AI documentation
+CLAUDE.md
